@@ -236,7 +236,8 @@ This enables complex temporal dynamics like polychronization and coincidence det
 use synaptic_wiring::ChannelRouter;
 
 // Default 3-channel router. `route` returns a Result: it errors if the
-// signal slice length doesn't match the configured channel count.
+// signal slice length doesn't match the configured channel count, or if
+// any sample is NaN / ±infinity. Finite signed samples are accepted.
 let mut router = ChannelRouter::new();
 let decision = router.route([0.8, 0.2, 0.1]).unwrap();
 

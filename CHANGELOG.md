@@ -43,6 +43,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Packaging**: Docker rustdoc snapshot path now matches the `synaptic-wiring`
   crate name (`target/doc/synaptic_wiring/`) after the rename (LIM-1219).
+- **ChannelRouter**: `route` and `route_modulated` reject NaN/±Inf channel
+  signals and neuromodulator fields before mutating neurons, fatigue,
+  adaptive weights, or `total_routes`. Errors name the channel index
+  (`MeshError::NonFiniteSignal`) or modulator field
+  (`MeshError::NonFiniteNeuromodulator`). Finite modulator values outside
+  `[0, 1]` are rejected (`MeshError::OutOfRangeNeuromodulator`) rather than
+  silently clamped. Finite signed signals keep their existing weighted-sum
+  behavior. (LIM-1229)
 
 ## [0.3.0] - 2026-09-13
 
