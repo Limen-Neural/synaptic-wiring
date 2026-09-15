@@ -34,9 +34,11 @@ ENV PATH=/usr/local/cargo/bin:${PATH}
 
 # Targeted copies so README/workflow/docs edits do not bust cargo layers.
 # README.md is required: crate doctests compile it via include_str!.
+# benches/ is required: Cargo.toml declares [[bench]] name = "propagate".
 COPY --chown=mesh:mesh Cargo.toml Cargo.lock rust-toolchain.toml README.md ./
 COPY --chown=mesh:mesh src ./src
 COPY --chown=mesh:mesh tests ./tests
+COPY --chown=mesh:mesh benches ./benches
 
 # Tests in a cacheable layer (parity with native CI / local builder rechecks).
 RUN cargo test --all-features --locked

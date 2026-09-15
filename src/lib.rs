@@ -21,7 +21,8 @@
 //! 2. [`SynapticMesh::new`] to wrap it, then [`SynapticMesh::propagate`] once
 //!    per tick — its docs state the full delivery contract (destination,
 //!    sign, magnitude, tick). Reuse a caller-owned buffer with
-//!    [`SynapticMesh::propagate_into`] (and the graded equivalent) when a
+//!    [`SynapticMesh::propagate_into`] and
+//!    [`SynapticMesh::propagate_graded_into`] when a
 //!    fixed-rate loop must avoid allocating every tick.
 //! 3. [`topology::assign_delays`] to rewrite a descriptor list's delays from
 //!    neuron positions, and [`topology::apply_dale_polarity`] to compute a

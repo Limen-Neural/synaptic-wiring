@@ -20,19 +20,37 @@ fn mesh_for(n: usize, max_delay: u16) -> SynapticMesh {
     SynapticMesh::new(graph)
 }
 
+fn boolean_input(n: usize) -> Vec<bool> {
+    let mut spikes = vec![false; n];
+    spikes[0] = true;
+    if n > 1 {
+        spikes[n / 2] = true;
+    }
+    spikes
+}
+
+fn graded_input(n: usize) -> Vec<f32> {
+    let mut activations = vec![0.0; n];
+    activations[0] = 0.8;
+    if n > 1 {
+        activations[n / 2] = -0.3;
+    }
+    activations
+}
+
 fn bench_propagate(c: &mut Criterion) {
     let mut group = c.benchmark_group("propagate");
     for n in NEURON_COUNTS {
         for (label, max_delay) in [("short", SHORT_DELAY), ("long", LONG_DELAY)] {
             group.throughput(Throughput::Elements(n as u64));
             let mut mesh = mesh_for(n, max_delay);
-            let spikes = vec![false; n];
+            let spikes = boolean_input(n);
             group.bench_with_input(BenchmarkId::new(format!("alloc/{label}"), n), &n, |b, _| {
                 b.iter(|| mesh.propagate(&spikes).expect("propagate"));
             });
 
             let mut mesh = mesh_for(n, max_delay);
-            let spikes = vec![false; n];
+            let spikes = boolean_input(n);
             let mut output = vec![0.0; n];
             group.bench_with_input(BenchmarkId::new(format!("into/{label}"), n), &n, |b, _| {
                 b.iter(|| {
@@ -52,7 +70,7 @@ fn bench_propagate_graded(c: &mut Criterion) {
         for (label, max_delay) in [("short", SHORT_DELAY), ("long", LONG_DELAY)] {
             group.throughput(Throughput::Elements(n as u64));
             let mut mesh = mesh_for(n, max_delay);
-            let activations = vec![0.0; n];
+            let activations = graded_input(n);
             group.bench_with_input(BenchmarkId::new(format!("alloc/{label}"), n), &n, |b, _| {
                 b.iter(|| {
                     mesh.propagate_graded(&activations)
@@ -61,7 +79,7 @@ fn bench_propagate_graded(c: &mut Criterion) {
             });
 
             let mut mesh = mesh_for(n, max_delay);
-            let activations = vec![0.0; n];
+            let activations = graded_input(n);
             let mut output = vec![0.0; n];
             group.bench_with_input(BenchmarkId::new(format!("into/{label}"), n), &n, |b, _| {
                 b.iter(|| {

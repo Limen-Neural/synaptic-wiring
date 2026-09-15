@@ -20,20 +20,24 @@ static ALLOCATIONS: AtomicU64 = AtomicU64::new(0);
 unsafe impl GlobalAlloc for CountingAlloc {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         ALLOCATIONS.fetch_add(1, Ordering::SeqCst);
+        // SAFETY: forwarding to the system allocator with the same layout.
         unsafe { System.alloc(layout) }
     }
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
         ALLOCATIONS.fetch_add(1, Ordering::SeqCst);
+        // SAFETY: forwarding to the system allocator with the same layout.
         unsafe { System.alloc_zeroed(layout) }
     }
 
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
         ALLOCATIONS.fetch_add(1, Ordering::SeqCst);
+        // SAFETY: `ptr` came from this allocator; layout/new_size are forwarded.
         unsafe { System.realloc(ptr, layout, new_size) }
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        // SAFETY: `ptr` came from this allocator; layout is forwarded.
         unsafe { System.dealloc(ptr, layout) }
     }
 }
@@ -56,22 +60,22 @@ fn reuse_path_is_allocation_free_after_new() {
     let mut graded_mesh = SynapticMesh::new(graph);
 
     let mut spikes = vec![false; n];
-    spikes[0] = true;
-    spikes[3] = true;
     let mut activations = vec![0.0; n];
-    activations[0] = 0.8;
-    activations[7] = -0.3;
     let mut boolean_out = vec![0.0; n];
     let mut graded_out = vec![0.0; n];
 
     for tick in 0..16 {
-        if tick > 0 {
-            spikes.fill(false);
-            activations.fill(0.0);
-            if tick % 2 == 0 {
-                spikes[tick % n] = true;
-                activations[tick % n] = 0.4;
-            }
+        spikes.fill(false);
+        activations.fill(0.0);
+        if tick == 0 {
+            // Dense first tick: every source is active so graded scratch
+            // fills to its reserved synapse_count capacity.
+            spikes.fill(true);
+            activations.fill(0.4);
+            activations[0] = -0.3;
+        } else if tick % 2 == 0 {
+            spikes[tick % n] = true;
+            activations[tick % n] = 0.4;
         }
 
         let (boolean_result, boolean_allocs) =
