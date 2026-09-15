@@ -27,7 +27,9 @@ use crate::error::{MeshError, Result};
 ///
 /// At each simulation tick:
 /// 1. Call [`SpikeDelayBuffer::inject`] for each spiking synapse to schedule future delivery.
-/// 2. Call [`SpikeDelayBuffer::drain_current_tick`] to collect all currents that have arrived.
+/// 2. Call [`SpikeDelayBuffer::drain_current_tick`] or
+///    [`SpikeDelayBuffer::drain_current_tick_into`] to collect all currents
+///    that have arrived.
 /// 3. Call [`SpikeDelayBuffer::advance`] to move the tick forward.
 ///
 /// With `max_delay == 0` the buffer holds a single slot and every spike is
@@ -261,14 +263,37 @@ impl SpikeDelayBuffer {
 
     /// Drain the current tick's accumulated synaptic currents.
     ///
-    /// Returns a slice of length `neuron_count` with the total synaptic
+    /// Returns a vector of length `neuron_count` with the total synaptic
     /// current arriving at each neuron in this tick. The slot is zeroed
     /// after draining.
+    ///
+    /// Prefer [`SpikeDelayBuffer::drain_current_tick_into`] when the caller
+    /// can reuse an output buffer.
     pub fn drain_current_tick(&mut self) -> Vec<f32> {
-        let slot_idx = self.slot_index(0);
-        let currents = self.slots[slot_idx].clone();
-        self.slots[slot_idx].fill(0.0);
+        let mut currents = vec![0.0; self.neuron_count];
+        self.drain_current_tick_into(&mut currents)
+            .expect("output length matches neuron_count");
         currents
+    }
+
+    /// Drain the current tick into a caller-owned buffer.
+    ///
+    /// `output` is **overwritten** with this tick's currents and must have
+    /// length `neuron_count()`. On success the drained slot is zeroed. On
+    /// a length mismatch the buffer is left unchanged — `output` is not
+    /// written and no slot is cleared.
+    pub fn drain_current_tick_into(&mut self, output: &mut [f32]) -> Result<()> {
+        if output.len() != self.neuron_count {
+            return Err(MeshError::NeuronCountMismatch {
+                expected: self.neuron_count,
+                got: output.len(),
+                context: "drain_current_tick_into output".into(),
+            });
+        }
+        let slot_idx = self.slot_index(0);
+        output.copy_from_slice(&self.slots[slot_idx]);
+        self.slots[slot_idx].fill(0.0);
+        Ok(())
     }
 
     /// Advance to the next tick.
@@ -566,6 +591,33 @@ mod tests {
         assert_eq!(restored.drain_current_tick()[1], 0.0);
         restored.advance();
         assert!((restored.drain_current_tick()[1] - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn drain_into_matches_allocating_drain() {
+        let mut a = SpikeDelayBuffer::new(4, 2);
+        let mut b = SpikeDelayBuffer::new(4, 2);
+        a.inject(1, 0.5, 0);
+        a.inject(3, 1.25, 0);
+        b.inject(1, 0.5, 0);
+        b.inject(3, 1.25, 0);
+
+        let allocated = a.drain_current_tick();
+        let mut reused = vec![42.0; 4];
+        b.drain_current_tick_into(&mut reused).unwrap();
+        assert_eq!(allocated, reused);
+    }
+
+    #[test]
+    fn drain_into_length_mismatch_leaves_buffer_and_output_unchanged() {
+        let mut buf = SpikeDelayBuffer::new(2, 1);
+        buf.inject(0, 1.0, 0);
+        let mut output = [42.0_f32, 42.0, 42.0];
+        let err = buf.drain_current_tick_into(&mut output).unwrap_err();
+        assert!(err.to_string().contains("drain_current_tick_into output"));
+        assert_eq!(output, [42.0, 42.0, 42.0]);
+        let currents = buf.drain_current_tick();
+        assert!((currents[0] - 1.0).abs() < 1e-6);
     }
 
     #[test]

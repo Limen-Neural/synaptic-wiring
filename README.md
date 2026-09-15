@@ -183,6 +183,28 @@ The rules it guarantees:
 pins every one of these against a fixed four-neuron graph and is a copyable
 starting point for your own loop.
 
+A fixed-rate simulation that already owns a current vector can reuse it with
+`propagate_into` / `propagate_graded_into` instead of allocating every tick.
+`output` is **overwritten** with this tick's currents (not accumulated into).
+Length mismatches and non-finite graded input are rejected before the mesh
+tick, delay buffers, or `output` change. After `SynapticMesh::new`, a
+successful reuse-path tick does not heap-allocate.
+
+```rust
+use synaptic_wiring::mesh::SynapticMesh;
+use synaptic_wiring::topology::SynapticGraph;
+use synaptic_wiring::types::{Polarity, SynapseDescriptor};
+
+let graph = SynapticGraph::from_descriptors(2, &[
+    SynapseDescriptor { source: 0, target: 1, weight: 0.75, delay: 0, polarity: Polarity::Excitatory },
+]).unwrap();
+let mut mesh = SynapticMesh::new(graph);
+let spikes = [true, false];
+let mut currents = [0.0; 2];
+mesh.propagate_into(&spikes, &mut currents).unwrap();
+assert_eq!(currents, [0.0, 0.75]);
+```
+
 ## Topology Generation
 
 `synaptic-wiring` provides several deterministic models for growing network graphs. All generators use golden-ratio fractional hashing for reproducibility across runs without external RNG dependencies.
@@ -223,6 +245,7 @@ In biological networks, spikes do not arrive instantly. `synaptic-wiring` implem
 2.  When a neuron fires, its spike is projected through its outgoing synapses.
 3.  The `SpikeDelayBuffer` schedules delivery at `current_tick + delay`.
 4.  At each tick, `propagate()` drains the current slot and returns the accumulated currents.
+    `propagate_into` does the same write into a caller-owned buffer.
 
 This enables complex temporal dynamics like polychronization and coincidence detection.
 

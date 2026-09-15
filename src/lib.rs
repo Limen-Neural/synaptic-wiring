@@ -20,7 +20,9 @@
 //!    every synapse yourself.
 //! 2. [`SynapticMesh::new`] to wrap it, then [`SynapticMesh::propagate`] once
 //!    per tick — its docs state the full delivery contract (destination,
-//!    sign, magnitude, tick).
+//!    sign, magnitude, tick). Reuse a caller-owned buffer with
+//!    [`SynapticMesh::propagate_into`] (and the graded equivalent) when a
+//!    fixed-rate loop must avoid allocating every tick.
 //! 3. [`topology::assign_delays`] to rewrite a descriptor list's delays from
 //!    neuron positions, and [`topology::apply_dale_polarity`] to compute a
 //!    per-neuron excitatory/inhibitory split — both work on the inputs to
@@ -43,7 +45,7 @@
 //! |--------|---------|
 //! | [`topology`] | Network graph construction — CSR adjacency with delay & polarity metadata, deterministic generators (Erdős–Rényi, Watts–Strogatz, Barabási–Albert, layered), and a versioned [`TopologyDigest`] |
 //! | [`delay`] | Temporal delay infrastructure — ring-buffer spike queues for tick-aligned delivery with configurable axonal propagation delays |
-//! | [`mesh`] | [`SynapticMesh`] orchestrator — the top-level struct owning topology + delays, provides `propagate()` for spike → current conversion |
+//! | [`mesh`] | [`SynapticMesh`] orchestrator — the top-level struct owning topology + delays, provides `propagate()` / `propagate_into()` for spike → current conversion |
 //! | [`sparse`] | Compressed Sparse Row (CSR) synaptic maps for GPU-optimized weight matrices |
 //! | [`router`] | Optional multi-channel classifier built on [`NeuromodNeuron`], a router-internal integration primitive |
 //!
