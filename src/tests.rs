@@ -687,6 +687,19 @@ fn non_finite_values() -> [f32; 3] {
     [f32::NAN, f32::INFINITY, f32::NEG_INFINITY]
 }
 
+const NEUROMOD_FIELDS: [&str; 3] = ["cortisol", "dopamine", "serotonin"];
+
+fn neuromod_with_field(field: &str, value: f32) -> NeuromodState {
+    let mut mods = NeuromodState::balanced();
+    match field {
+        "cortisol" => mods.cortisol = value,
+        "dopamine" => mods.dopamine = value,
+        "serotonin" => mods.serotonin = value,
+        other => panic!("unknown neuromodulator field {other}"),
+    }
+    mods
+}
+
 fn assert_non_finite_signal(err: MeshError, expected_index: usize, expected_context: &str) {
     let msg = format!("{err}");
     match err {
@@ -746,28 +759,14 @@ fn route_modulated_rejects_non_finite_signals_at_first_middle_and_last_channel()
 
 #[test]
 fn each_neuromodulator_field_independently_rejected_when_non_finite() {
-    let fields: [(&str, fn(f32) -> NeuromodState); 3] = [
-        ("cortisol", |v| NeuromodState {
-            cortisol: v,
-            ..NeuromodState::balanced()
-        }),
-        ("dopamine", |v| NeuromodState {
-            dopamine: v,
-            ..NeuromodState::balanced()
-        }),
-        ("serotonin", |v| NeuromodState {
-            serotonin: v,
-            ..NeuromodState::balanced()
-        }),
-    ];
-    for (field, make) in fields {
+    for field in NEUROMOD_FIELDS {
         for bad in non_finite_values() {
             let mut router = ChannelRouter::new();
             // Advance once so a mutation would be visible against a clone.
             router.route([1.0, 0.0, 0.0]).unwrap();
             let before = router.clone();
             let err = router
-                .route_modulated([0.5, 0.0, 0.0], &make(bad))
+                .route_modulated([0.5, 0.0, 0.0], &neuromod_with_field(field, bad))
                 .unwrap_err();
             let msg = format!("{err}");
             match err {
@@ -787,23 +786,9 @@ fn each_neuromodulator_field_independently_rejected_when_non_finite() {
 
 #[test]
 fn each_neuromodulator_field_independently_rejected_when_out_of_range() {
-    let fields: [(&str, fn(f32) -> NeuromodState); 3] = [
-        ("cortisol", |v| NeuromodState {
-            cortisol: v,
-            ..NeuromodState::balanced()
-        }),
-        ("dopamine", |v| NeuromodState {
-            dopamine: v,
-            ..NeuromodState::balanced()
-        }),
-        ("serotonin", |v| NeuromodState {
-            serotonin: v,
-            ..NeuromodState::balanced()
-        }),
-    ];
-    for (field, make) in fields {
+    for field in NEUROMOD_FIELDS {
         for value in [-0.1f32, 1.01, 2.0, -1.0] {
-            let err = make(value).validate().unwrap_err();
+            let err = neuromod_with_field(field, value).validate().unwrap_err();
             let msg = format!("{err}");
             match err {
                 MeshError::OutOfRangeNeuromodulator {
@@ -823,7 +808,7 @@ fn each_neuromodulator_field_independently_rejected_when_out_of_range() {
             let mut router = ChannelRouter::new();
             let before = router.clone();
             let route_err = router
-                .route_modulated([0.5, 0.0, 0.0], &make(value))
+                .route_modulated([0.5, 0.0, 0.0], &neuromod_with_field(field, value))
                 .unwrap_err();
             assert!(
                 matches!(
