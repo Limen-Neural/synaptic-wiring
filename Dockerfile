@@ -46,7 +46,7 @@ RUN cargo doc --no-deps --all-features --locked --document-private-items \
     && mkdir -p /app/out \
     && grep -m1 '^version' Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/' > /app/out/VERSION \
     && test -s /app/out/VERSION \
-    && test -f /app/target/doc/synaptic_mesh/index.html
+    && test -f /app/target/doc/synaptic_wiring/index.html
 
 # Default re-check when running the builder stage without args.
 CMD ["cargo", "test", "--all-features", "--locked"]

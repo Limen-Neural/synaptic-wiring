@@ -79,11 +79,11 @@ jobs:
           test -n "${expected}"
           test "${actual}" = "${expected}"
           docker run --rm --entrypoint test "${{ steps.image.outputs.verify_tag }}" \
-            -f /usr/share/doc/synaptic-mesh/synaptic_mesh/index.html
+            -f /usr/share/doc/synaptic-mesh/synaptic_wiring/index.html
           docker run --rm --entrypoint test "${{ steps.image.outputs.verify_tag }}" \
             -s /usr/share/synaptic-mesh/VERSION
           docker run --rm --entrypoint ls "${{ steps.image.outputs.verify_tag }}" \
-            -la /usr/share/synaptic-mesh /usr/share/doc/synaptic-mesh/synaptic_mesh
+            -la /usr/share/synaptic-mesh /usr/share/doc/synaptic-mesh/synaptic_wiring
 
       - name: Build builder stage
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0

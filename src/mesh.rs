@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::delay::{SpikeDelayBuffer, validate_current_tick};
 use crate::error::{MeshError, Result};
-use crate::topology::SynapticGraph;
+use crate::topology::{SynapticGraph, TopologyDigest};
 
 /// Top-level synaptic wiring orchestrator.
 ///
@@ -350,6 +350,14 @@ impl SynapticMesh {
         &self.graph
     }
 
+    /// Deterministic digest of the logical topology (not tick or delay-buffer state).
+    ///
+    /// Equivalent to [`SynapticGraph::topology_digest`] on [`Self::graph`].
+    #[must_use]
+    pub fn topology_digest(&self) -> TopologyDigest {
+        self.graph.topology_digest()
+    }
+
     /// Reset delay buffer and tick counter.
     pub fn reset(&mut self) {
         self.delay_buffer.reset();
@@ -382,6 +390,20 @@ fn accumulate_slot_current(
 mod tests {
     use super::*;
     use crate::topology::{generate_layered, generate_random, generate_small_world};
+
+    #[test]
+    fn topology_digest_matches_graph_and_ignores_tick() {
+        let graph = two_neuron_delay_graph(1);
+        let mut mesh = SynapticMesh::new(graph.clone());
+        let before = mesh.topology_digest();
+        assert_eq!(before, graph.topology_digest());
+        let _ = mesh.propagate(&[true, false]).unwrap();
+        assert_eq!(
+            mesh.topology_digest(),
+            before,
+            "tick / delay-buffer state must not enter the topology digest"
+        );
+    }
 
     fn two_neuron_delay_graph(delay: u16) -> SynapticGraph {
         use crate::types::{Polarity, SynapseDescriptor};
