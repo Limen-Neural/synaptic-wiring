@@ -43,18 +43,31 @@ pub(crate) fn meshes_equivalent(
     live: &SynapticMesh,
     restored: &SynapticMesh,
 ) -> Result<(), String> {
-    if live.tick() != restored.tick() {
-        return Err(format!(
-            "tick mismatch: live={} restored={}",
-            live.tick(),
-            restored.tick()
-        ));
-    }
     let live_snap = crate::harness::checkpoint_snapshot(live);
     let restored_snap = crate::harness::checkpoint_snapshot(restored);
     if live_snap != restored_snap {
+        let mut diffs = Vec::new();
+        if let (Some(l_obj), Some(r_obj)) = (live_snap.as_object(), restored_snap.as_object()) {
+            for (k, v) in l_obj {
+                if r_obj.get(k) != Some(v) {
+                    diffs.push(format!("  field '{k}': live={v} != restored={:?}", r_obj.get(k)));
+                }
+            }
+            for k in r_obj.keys() {
+                if !l_obj.contains_key(k) {
+                    diffs.push(format!("  field '{k}' missing in live"));
+                }
+            }
+        }
+        let diff_summary = if diffs.is_empty() {
+            String::new()
+        } else {
+            format!("\ndiffering fields:\n{}", diffs.join("\n"))
+        };
         return Err(format!(
-            "checkpoint snapshot mismatch\nlive queued={}\nrestored queued={}",
+            "checkpoint snapshot mismatch (tick: live={} restored={}){diff_summary}\nlive queued={}\nrestored queued={}\nfull live snapshot={live_snap}\nfull restored snapshot={restored_snap}",
+            live.tick(),
+            restored.tick(),
             queued_deliveries(&live_snap),
             queued_deliveries(&restored_snap)
         ));

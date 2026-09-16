@@ -51,7 +51,7 @@ impl Recipe {
     ];
 
     pub(crate) fn from_seed(seed: u64) -> Self {
-        Self::ALL[(seed as usize) % Self::ALL.len()]
+        Self::ALL[(seed % Self::ALL.len() as u64) as usize]
     }
 }
 
