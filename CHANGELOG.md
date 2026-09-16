@@ -18,6 +18,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on legacy snapshots are still filled in (issue LIM-1228).
 - **Errors**: `MeshError::InvalidRouterConfig { field, reason }` so
   constructor and serde paths share a matchable field category.
+- **Topology digest**: `SynapticGraph::topology_digest` / `SynapticMesh::topology_digest`
+  return a printable, schema-versioned SHA-256 of the canonical logical graph
+  (neuron count, sorted edges, IEEE weight bit patterns, delay, polarity).
+  Insertion order, host endianness, and serde formatting do not affect the
+  value. IEEE `+0.0` / `-0.0` are hashed as distinct bit patterns; NaN/Inf
+  never appear because graph construction already rejects them
+  (LIM-1219).
+- **Mesh**: `SynapticMesh::propagate_into` and `propagate_graded_into` write
+  this tick's currents into a caller-owned `&mut [f32]`. The allocating
+  `propagate` / `propagate_graded` methods remain as source-compatible
+  wrappers. Wrong-sized or non-finite input is rejected before tick, delay
+  buffer, or output mutation. After `new()`, a successful reuse-path tick
+  performs no heap allocations (issue LIM-1222).
+- **Delay buffer**: `SpikeDelayBuffer::drain_current_tick_into` drains into
+  a caller-owned buffer; the allocating drain is a wrapper around it.
+- **Benches**: Criterion cases for 16 / 256 / 4096 neurons with short and
+  long delays, comparing allocating vs caller-buffer propagation.
+- **Tests**: `tests/checkpoint_resume/` — seeded property/fuzz coverage that a
+  restored `SynapticMesh` continues tick-for-tick identically to the live mesh
+  with spikes in flight (currents, tick, queued deliveries). Covers generated
+  graphs, signed weights, empty ticks, max-delay capacity, checkpoint-before-
+  delivery, JSON plus postcard restore, persisted regression seeds, and a
+  documented ignored nightly profile (`CHECKPOINT_RESUME_CASES`).
+  Invalid checkpoints stay rejected by the existing load-path tests rather
+  than being normalized here (LIM-1223).
 - **Packaging**: Docker + GHCR container for releases (`ghcr.io/limen-neural/synaptic-mesh`).
   Library crate (no `examples/` / `[[bin]]`), so the image is a rustdoc snapshot
   plus a version stamp rather than a fake binary. PR workflow verifies without
@@ -32,6 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to stay on the same Rust version as `ci.yml`. JUnit results are
   uploaded from `target/nextest/ci/junit.xml` (issue #77 / LIM-1180).
 
+<<<<<<< HEAD
 ### Changed
 
 - **Router**: `ChannelRouter::with_config` still panics on invalid config,
@@ -52,6 +78,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   panicking later or restoring inconsistent vector shapes (issue LIM-1228).
 - **Docker**: rustdoc path checks use `synaptic_wiring` after the crate rename
   (issue LIM-1228 / leftover from LIM-1178).
+=======
+### Fixed
+
+- **Packaging**: Docker rustdoc snapshot path now matches the `synaptic-wiring`
+  crate name (`target/doc/synaptic_wiring/`) after the rename (LIM-1219).
+- **ChannelRouter**: `route` and `route_modulated` reject NaN/±Inf channel
+  signals and neuromodulator fields before mutating neurons, fatigue,
+  adaptive weights, or `total_routes`. Errors name the channel index
+  (`MeshError::NonFiniteSignal`) or modulator field
+  (`MeshError::NonFiniteNeuromodulator`). Finite modulator values outside
+  `[0, 1]` are rejected (`MeshError::OutOfRangeNeuromodulator`) rather than
+  silently clamped. Finite signed signals keep their existing weighted-sum
+  behavior. (LIM-1229)
+>>>>>>> main
 
 ## [0.3.0] - 2026-09-13
 

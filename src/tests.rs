@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
+use crate::error::MeshError;
 use crate::router::{ChannelRouter, NeuromodNeuron, NeuromodState, RouterConfig};
 
 #[test]
@@ -631,4 +632,331 @@ fn plasticity_speed_tunes_adaptation_rate() {
         "Faster plasticity_speed should produce a larger weight after one active route: \
          slow={w_slow}, fast={w_fast}"
     );
+}
+
+// ── Non-finite ingress (LIM-1229) ─────────────────────────────────────────────
+
+fn router_snapshot(router: &ChannelRouter) -> serde_json::Value {
+    serde_json::to_value(router).expect("router must serialize")
+}
+
+fn assert_internal_state_eq(left: &ChannelRouter, right: &ChannelRouter) {
+    assert_eq!(left.total_routes, right.total_routes);
+    assert_eq!(left.fatigue(), right.fatigue());
+    assert_eq!(left.weight_matrix(), right.weight_matrix());
+    assert_eq!(
+        router_snapshot(left),
+        router_snapshot(right),
+        "serialized internal state (neurons, baseline weights, config) must match"
+    );
+}
+
+fn non_finite_values() -> [f32; 3] {
+    [f32::NAN, f32::INFINITY, f32::NEG_INFINITY]
+}
+
+const NEUROMOD_FIELDS: [&str; 3] = ["cortisol", "dopamine", "serotonin"];
+
+fn neuromod_with_field(field: &str, value: f32) -> NeuromodState {
+    let mut mods = NeuromodState::balanced();
+    match field {
+        "cortisol" => mods.cortisol = value,
+        "dopamine" => mods.dopamine = value,
+        "serotonin" => mods.serotonin = value,
+        other => panic!("unknown neuromodulator field {other}"),
+    }
+    mods
+}
+
+fn assert_non_finite_signal(err: MeshError, expected_index: usize, expected_context: &str) {
+    let msg = format!("{err}");
+    match err {
+        MeshError::NonFiniteSignal { index, context } => {
+            assert_eq!(index, expected_index, "rejected channel index");
+            assert_eq!(context, expected_context);
+            assert!(
+                msg.contains(&format!("[{expected_index}]")),
+                "Display must name the channel index, got: {msg}"
+            );
+            assert!(
+                msg.contains(expected_context),
+                "Display must name the entry point, got: {msg}"
+            );
+        }
+        other => panic!("expected NonFiniteSignal, got {other}"),
+    }
+}
+
+#[test]
+fn route_rejects_non_finite_signals_at_first_middle_and_last_channel() {
+    let n = 3;
+    for bad in non_finite_values() {
+        for index in [0usize, n / 2, n - 1] {
+            let mut signals = vec![0.5f32; n];
+            signals[index] = bad;
+            let mut router = ChannelRouter::new();
+            let before = router.clone();
+            let err = router.route(&signals).unwrap_err();
+            assert_non_finite_signal(err, index, "route signals");
+            assert_internal_state_eq(&router, &before);
+        }
+    }
+}
+
+#[test]
+fn route_modulated_rejects_non_finite_signals_at_first_middle_and_last_channel() {
+    let n = 5;
+    let config = RouterConfig {
+        channel_count: n,
+        ..RouterConfig::default()
+    };
+    for bad in non_finite_values() {
+        for index in [0usize, n / 2, n - 1] {
+            let mut signals = vec![0.25f32; n];
+            signals[index] = bad;
+            let mut router = ChannelRouter::with_config(config.clone());
+            let before = router.clone();
+            let err = router
+                .route_modulated(&signals, &NeuromodState::balanced())
+                .unwrap_err();
+            assert_non_finite_signal(err, index, "route_modulated signals");
+            assert_internal_state_eq(&router, &before);
+        }
+    }
+}
+
+#[test]
+fn each_neuromodulator_field_independently_rejected_when_non_finite() {
+    for field in NEUROMOD_FIELDS {
+        for bad in non_finite_values() {
+            let mut router = ChannelRouter::new();
+            // Advance once so a mutation would be visible against a clone.
+            router.route([1.0, 0.0, 0.0]).unwrap();
+            let before = router.clone();
+            let err = router
+                .route_modulated([0.5, 0.0, 0.0], &neuromod_with_field(field, bad))
+                .unwrap_err();
+            let msg = format!("{err}");
+            match err {
+                MeshError::NonFiniteNeuromodulator { field: got } => {
+                    assert_eq!(got, field);
+                    assert!(
+                        msg.contains(field),
+                        "Display must name the field, got: {msg}"
+                    );
+                }
+                other => panic!("expected NonFiniteNeuromodulator for {field}, got {other}"),
+            }
+            assert_internal_state_eq(&router, &before);
+        }
+    }
+}
+
+#[test]
+fn each_neuromodulator_field_independently_rejected_when_out_of_range() {
+    for field in NEUROMOD_FIELDS {
+        for value in [-0.1f32, 1.01, 2.0, -1.0] {
+            let err = neuromod_with_field(field, value).validate().unwrap_err();
+            let msg = format!("{err}");
+            match err {
+                MeshError::OutOfRangeNeuromodulator {
+                    field: got,
+                    value: got_value,
+                } => {
+                    assert_eq!(got, field);
+                    assert_eq!(got_value, value);
+                    assert!(
+                        msg.contains(field) && msg.contains("[0, 1]"),
+                        "Display must name field and range, got: {msg}"
+                    );
+                }
+                other => panic!("expected OutOfRangeNeuromodulator for {field}, got {other}"),
+            }
+
+            let mut router = ChannelRouter::new();
+            let before = router.clone();
+            let route_err = router
+                .route_modulated([0.5, 0.0, 0.0], &neuromod_with_field(field, value))
+                .unwrap_err();
+            assert!(
+                matches!(
+                    route_err,
+                    MeshError::OutOfRangeNeuromodulator { field: got, .. } if got == field
+                ),
+                "route_modulated must reject out-of-range {field}"
+            );
+            assert_internal_state_eq(&router, &before);
+        }
+    }
+}
+
+#[test]
+fn unit_interval_endpoints_and_signed_zero_are_accepted() {
+    for value in [-0.0f32, 0.0, 1.0] {
+        let mods = NeuromodState {
+            cortisol: value,
+            dopamine: value,
+            serotonin: value,
+        };
+        mods.validate()
+            .expect("documented [0, 1] endpoints must be accepted");
+
+        let mut router = ChannelRouter::new();
+        assert!(
+            router.route_modulated([0.5, 0.0, 0.0], &mods).is_ok(),
+            "route_modulated must accept endpoint value {value}"
+        );
+    }
+}
+
+#[test]
+fn rejection_leaves_all_internal_state_unchanged() {
+    let mut router = ChannelRouter::new();
+    router.route([1.0, 0.0, 0.0]).unwrap();
+    router.route([0.0, 1.0, 0.0]).unwrap();
+    let before = router.clone();
+
+    assert!(router.route([0.8, f32::NAN, 0.1]).is_err());
+    assert_internal_state_eq(&router, &before);
+
+    let mods = NeuromodState {
+        dopamine: f32::INFINITY,
+        ..NeuromodState::balanced()
+    };
+    assert!(router.route_modulated([0.8, 0.1, 0.0], &mods).is_err());
+    assert_internal_state_eq(&router, &before);
+}
+
+#[test]
+fn valid_call_after_rejection_matches_untouched_control() {
+    let mut rejected = ChannelRouter::new();
+    let mut control = ChannelRouter::new();
+    rejected.route([1.0, 0.0, 0.0]).unwrap();
+    control.route([1.0, 0.0, 0.0]).unwrap();
+
+    assert!(rejected.route([f32::NAN, 0.0, 0.0]).is_err());
+    assert!(
+        rejected
+            .route_modulated(
+                [0.0, 0.0, 0.0],
+                &NeuromodState {
+                    cortisol: f32::NAN,
+                    ..NeuromodState::balanced()
+                }
+            )
+            .is_err()
+    );
+
+    let d_rej = rejected.route([0.8, 0.1, 0.0]).unwrap();
+    let d_ctl = control.route([0.8, 0.1, 0.0]).unwrap();
+    assert_eq!(d_rej.active_channels, d_ctl.active_channels);
+    assert_eq!(d_rej.firing_rates, d_ctl.firing_rates);
+    assert_eq!(d_rej.input_signals, d_ctl.input_signals);
+    assert_internal_state_eq(&rejected, &control);
+
+    let mods = NeuromodState::rewarded();
+    let d_rej = rejected.route_modulated([0.4, 0.0, 0.2], &mods).unwrap();
+    let d_ctl = control.route_modulated([0.4, 0.0, 0.2], &mods).unwrap();
+    assert_eq!(d_rej.active_channels, d_ctl.active_channels);
+    assert_eq!(d_rej.firing_rates, d_ctl.firing_rates);
+    assert_internal_state_eq(&rejected, &control);
+}
+
+#[test]
+fn serde_restored_router_follows_the_same_ingress_rules() {
+    let original = ChannelRouter::new();
+    let json = serde_json::to_value(&original).expect("fresh router must serialize");
+    let mut restored: ChannelRouter =
+        serde_json::from_value(json).expect("fresh router must deserialize");
+    let before = restored.clone();
+
+    let err = restored.route([0.0, f32::INFINITY, 0.0]).unwrap_err();
+    assert_non_finite_signal(err, 1, "route signals");
+    assert_internal_state_eq(&restored, &before);
+
+    let err = restored
+        .route_modulated(
+            [0.5, 0.0, 0.0],
+            &NeuromodState {
+                serotonin: f32::NEG_INFINITY,
+                ..NeuromodState::balanced()
+            },
+        )
+        .unwrap_err();
+    match err {
+        MeshError::NonFiniteNeuromodulator { field } => assert_eq!(field, "serotonin"),
+        other => panic!("expected NonFiniteNeuromodulator, got {other}"),
+    }
+    assert_internal_state_eq(&restored, &before);
+
+    restored.route([1.0, 0.0, 0.0]).unwrap();
+    let mut control = ChannelRouter::new();
+    control.route([1.0, 0.0, 0.0]).unwrap();
+    assert_internal_state_eq(&restored, &control);
+}
+
+#[test]
+fn rejection_does_not_self_heal_malformed_serde_state() {
+    let mut router = ChannelRouter::new();
+    router.channel_fatigue = vec![];
+    let before = router_snapshot(&router);
+    assert_eq!(before["channel_fatigue"], serde_json::json!([]));
+
+    assert!(router.route([f32::NAN, 0.0, 0.0]).is_err());
+    assert_eq!(
+        router_snapshot(&router)["channel_fatigue"],
+        before["channel_fatigue"],
+        "failed ingress must not run ensure_neuromod_state_synced"
+    );
+
+    let invalid_mods = NeuromodState {
+        dopamine: f32::NAN,
+        ..NeuromodState::balanced()
+    };
+    assert!(
+        router
+            .route_modulated([0.5, 0.0, 0.0], &invalid_mods)
+            .is_err()
+    );
+    assert_eq!(
+        router_snapshot(&router)["channel_fatigue"],
+        before["channel_fatigue"],
+        "failed modulated ingress must not run ensure_neuromod_state_synced"
+    );
+}
+
+#[test]
+fn finite_signed_signals_retain_current_behavior() {
+    let mut positive = ChannelRouter::new();
+    let mut negative = ChannelRouter::new();
+    let pos = positive.route([0.8, 0.2, -0.1]).unwrap();
+    let neg = negative.route([-0.8, 0.2, -0.1]).unwrap();
+
+    assert!(pos.firing_rates.iter().all(|r| r.is_finite()));
+    assert!(neg.firing_rates.iter().all(|r| r.is_finite()));
+    assert!(pos.is_active(0), "positive pulse on channel 0 should fire");
+    assert!(
+        !neg.is_active(0),
+        "negative pulse on channel 0 should inhibit rather than activate"
+    );
+
+    let mut modulated = ChannelRouter::new();
+    let d = modulated
+        .route_modulated([-0.5, 0.0, 0.9], &NeuromodState::balanced())
+        .unwrap();
+    assert!(d.firing_rates.iter().all(|r| r.is_finite()));
+    assert!(d.is_active(2));
+    assert!(!d.is_active(0));
+}
+
+#[test]
+fn later_non_finite_signal_does_not_apply_earlier_valid_channels() {
+    let mut router = ChannelRouter::new();
+    let before = router.clone();
+    let err = router
+        .route_modulated([1.0, 0.0, f32::NAN], &NeuromodState::stressed())
+        .unwrap_err();
+    assert_non_finite_signal(err, 2, "route_modulated signals");
+    assert_eq!(router.total_routes, 0);
+    assert_internal_state_eq(&router, &before);
 }

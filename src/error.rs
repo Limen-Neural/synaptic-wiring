@@ -8,7 +8,7 @@
 use std::fmt;
 
 /// Unified error type for synaptic-wiring operations.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum MeshError {
     /// A required parameter was out of range or invalid.
     InvalidConfig(String),
@@ -41,6 +41,21 @@ pub enum MeshError {
 
     /// Delay buffer overflow or misconfiguration.
     DelayError(String),
+
+    /// A [`ChannelRouter`](crate::router::ChannelRouter) channel signal was
+    /// NaN or ±infinity. `index` is the channel of the rejected sample;
+    /// `context` names the public entry point (`"route signals"` or
+    /// `"route_modulated signals"`).
+    NonFiniteSignal { index: usize, context: String },
+
+    /// A [`NeuromodState`](crate::router::NeuromodState) field was NaN or
+    /// ±infinity. `field` is `"cortisol"`, `"dopamine"`, or `"serotonin"`.
+    NonFiniteNeuromodulator { field: &'static str },
+
+    /// A [`NeuromodState`](crate::router::NeuromodState) field was finite but
+    /// outside the documented `[0, 1]` interval. Out-of-range values are
+    /// rejected rather than silently clamped.
+    OutOfRangeNeuromodulator { field: &'static str, value: f32 },
 }
 
 impl MeshError {
@@ -72,6 +87,18 @@ impl fmt::Display for MeshError {
             }
             MeshError::TopologyError(msg) => write!(f, "topology error: {msg}"),
             MeshError::DelayError(msg) => write!(f, "delay error: {msg}"),
+            MeshError::NonFiniteSignal { index, context } => {
+                write!(f, "non-finite signal in {context}[{index}]")
+            }
+            MeshError::NonFiniteNeuromodulator { field } => {
+                write!(f, "non-finite neuromodulator field {field}")
+            }
+            MeshError::OutOfRangeNeuromodulator { field, value } => {
+                write!(
+                    f,
+                    "neuromodulator field {field} must be in [0, 1], got {value}"
+                )
+            }
         }
     }
 }

@@ -35,7 +35,7 @@ that matches what you're doing instead of reaching for a one-off
 | `dev`     | `cargo build` / `cargo run`  | `opt-level = 0`, full debug info, incremental compiles — fastest edit/compile loop. |
 | `test`    | `cargo test`                 | Inherits `dev` but bumps to `opt-level = 1` so the unit/property-test suite (GH#21) runs faster, while keeping compile times close to `dev`. |
 | `release` | `cargo build --release`      | `opt-level = 3`, thin LTO, single codegen unit, stripped — tuned for the crates.io publish (GH#37): best runtime performance and smallest binary. |
-| `bench`   | `cargo bench`                | Inherits `release` so that once benchmarks are added (GH#17, not yet implemented), they reflect real release performance, but keeps debug symbols (`strip = false`) so profilers can still symbolize. |
+| `bench`   | `cargo bench`                | Inherits `release` so criterion benches reflect real release performance, but keeps debug symbols (`strip = false`) so profilers can still symbolize. |
 
 The rationale above is kept in sync with the comments on each
 `[profile.*]` block in `Cargo.toml` — update both together if a profile
@@ -74,6 +74,22 @@ cargo fmt --check
 cargo test --locked
 cargo clippy --all-features -- -D warnings
 ```
+
+### Checkpoint resume property suite (LIM-1223)
+
+Default CI already runs this via `cargo test --locked`. The bounded profile is
+`tests/checkpoint_resume/`: 512 seeded cases plus named boundary/regression
+fixtures, restoring through JSON and postcard.
+
+For a longer ignored/nightly run (10_000 additional seeds by default):
+
+```bash
+cargo test --locked --test checkpoint_resume resume_equivalence_nightly -- --ignored
+CHECKPOINT_RESUME_CASES=50000 cargo test --locked --test checkpoint_resume resume_equivalence_nightly -- --ignored
+```
+
+Persist a failing seed in `REGRESSION_SEEDS`. If the on-failure shrinker prints
+a smaller scenario, add that as a named fixture next to the other boundary tests.
 
 ## Regression guards
 

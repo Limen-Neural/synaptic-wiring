@@ -23,8 +23,9 @@ The Cargo package is `synaptic-wiring` (this crate was previously named
 [`Limen-Neural/synaptic-wiring`](https://github.com/Limen-Neural/synaptic-wiring)
 (GitHub redirects the former `Limen-Neural/synaptic-mesh` URL).
 
-It is a plain library with one dependency (`serde`) — no framework, no runtime,
-no GPU requirement, and no assumptions about how your neurons integrate current.
+It is a plain library with two runtime dependencies (`serde` and `sha2`) — no
+framework, no runtime, no GPU requirement, and no assumptions about how your
+neurons integrate current.
 
 **Reach for it when you need to:**
 
@@ -36,7 +37,9 @@ no GPU requirement, and no assumptions about how your neurons integrate current.
   outgoing synapses follow,
 - store a large sparse weight matrix compactly (CSR) and hand it to a GPU,
 - get **reproducible** topologies: the generators hash neuron indices instead of
-  drawing from an RNG, so the same parameters always produce the same network.
+  drawing from an RNG, so the same parameters always produce the same network,
+- fingerprint a mesh's logical wiring with `topology_digest()` for manifests,
+  replay, and cross-runtime comparison.
 
 **It deliberately does not** implement neuron models (LIF, Izhikevich, …),
 learning rules, or training loops — those stay in your code or in a neuron-model
@@ -48,6 +51,7 @@ crate. See [Crate boundary](#crate-boundary).
 - **Temporal Propagation** — Per-synapse axonal delays stored alongside weights. Spikes are delivered at the correct future tick via a high-performance ring-buffer queue.
 - **Biologically Inspired Wiring** — Support for Dale's Law (fixed neuron polarity) and position-based distance-dependent connectivity.
 - **Sparse Synaptic Map (CSR)** — Compressed Sparse Row format for memory-efficient weight storage (20× reduction for sparse networks).
+- **Topology digest** — Versioned SHA-256 of the canonical logical graph (sorted edges, IEEE weight bits, delay, polarity) for manifests and provenance.
 - **Generic Channel Router** *(optional)* — A configurable multi-channel router for sparse signal classification, usable on its own or ignored entirely.
 
 ## Where to start
@@ -59,6 +63,7 @@ crate. See [Crate boundary](#crate-boundary).
 | Hand-build an exact graph | `SynapticGraph::from_descriptors` with `SynapseDescriptor` | [Spike delivery contract](#spike-delivery-contract) |
 | Plan polarity or distance-based delays *before* building a graph | `topology::apply_dale_polarity` (computes a per-neuron polarity vector), `topology::assign_delays` (rewrites descriptors in place) | [Temporal Delays](#temporal-delays--spike-propagation) |
 | Store a big sparse weight matrix / upload to a GPU | `SparseSynapticMap`, `SynapticMesh::to_gpu_arrays` | [Core Capabilities](#core-capabilities) |
+| Record topology in a manifest / compare two graphs | `SynapticGraph::topology_digest` | [Topology digest](#topology-digest) |
 | Pick a few active channels out of many inputs | `ChannelRouter` | [Generic Channel Router](#generic-channel-router) |
 
 ## Installation
@@ -80,7 +85,7 @@ synaptic-wiring = { git = "https://github.com/Limen-Neural/synaptic-wiring" }
 
 Add `tag = "v0.3.0"` to pin a git dependency to a specific release instead of tracking `main` — see [releases](https://github.com/Limen-Neural/synaptic-wiring/releases) for the tags that exist today.
 
-**MSRV:** Rust **1.98.1**. The only runtime dependency is `serde`.
+**MSRV:** Rust **1.98.1**. Runtime dependencies: `serde`, `sha2`.
 
 Contributors: see
 [REVIEW.md](https://github.com/Limen-Neural/synaptic-wiring/blob/main/REVIEW.md#build-profiles)
@@ -178,6 +183,28 @@ The rules it guarantees:
 pins every one of these against a fixed four-neuron graph and is a copyable
 starting point for your own loop.
 
+A fixed-rate simulation that already owns a current vector can reuse it with
+`propagate_into` / `propagate_graded_into` instead of allocating every tick.
+`output` is **overwritten** with this tick's currents (not accumulated into).
+Length mismatches and non-finite graded input are rejected before the mesh
+tick, delay buffers, or `output` change. After `SynapticMesh::new`, a
+successful reuse-path tick does not heap-allocate.
+
+```rust
+use synaptic_wiring::mesh::SynapticMesh;
+use synaptic_wiring::topology::SynapticGraph;
+use synaptic_wiring::types::{Polarity, SynapseDescriptor};
+
+let graph = SynapticGraph::from_descriptors(2, &[
+    SynapseDescriptor { source: 0, target: 1, weight: 0.75, delay: 0, polarity: Polarity::Excitatory },
+]).unwrap();
+let mut mesh = SynapticMesh::new(graph);
+let spikes = [true, false];
+let mut currents = [0.0; 2];
+mesh.propagate_into(&spikes, &mut currents).unwrap();
+assert_eq!(currents, [0.0, 0.75]);
+```
+
 ## Topology Generation
 
 `synaptic-wiring` provides several deterministic models for growing network graphs. All generators use golden-ratio fractional hashing for reproducibility across runs without external RNG dependencies.
@@ -189,6 +216,27 @@ starting point for your own loop.
 | **Random** | `generate_random` | Erdős–Rényi random graphs for baseline comparisons. |
 | **Layered** | `generate_layered` | Classical feed-forward structures (Input -> Hidden -> Output). |
 
+## Topology digest
+
+`SynapticGraph::topology_digest()` (and `SynapticMesh::topology_digest()`) returns
+a printable, schema-versioned SHA-256 of the **logical** graph: neuron count and
+every edge's source, target, IEEE-754 weight bit pattern, delay, and polarity.
+Edges are sorted before hashing, so insertion order, CSR layout, host endianness,
+and JSON formatting cannot change the value.
+
+The string is safe to store in a manifest:
+
+```text
+synaptic-wiring.topology.digest.v1:sha256:<64 hex chars>
+```
+
+IEEE `+0.0` and `-0.0` digest differently (bit patterns are hashed as-is).
+NaN and infinities cannot appear: graph construction and serde already reject
+them. This is an identifier, not a cryptographic signature.
+
+See [`tests/topology_digest.rs`](https://github.com/Limen-Neural/synaptic-wiring/blob/main/tests/topology_digest.rs)
+for golden values and an insertion-order permutation test.
+
 ## Temporal Delays & Spike Propagation
 
 In biological networks, spikes do not arrive instantly. `synaptic-wiring` implements a temporal logic layer using a **Ring-Buffer Delay Queue**:
@@ -197,6 +245,7 @@ In biological networks, spikes do not arrive instantly. `synaptic-wiring` implem
 2.  When a neuron fires, its spike is projected through its outgoing synapses.
 3.  The `SpikeDelayBuffer` schedules delivery at `current_tick + delay`.
 4.  At each tick, `propagate()` drains the current slot and returns the accumulated currents.
+    `propagate_into` does the same write into a caller-owned buffer.
 
 This enables complex temporal dynamics like polychronization and coincidence detection.
 
@@ -210,7 +259,8 @@ This enables complex temporal dynamics like polychronization and coincidence det
 use synaptic_wiring::ChannelRouter;
 
 // Default 3-channel router. `route` returns a Result: it errors if the
-// signal slice length doesn't match the configured channel count.
+// signal slice length doesn't match the configured channel count, or if
+// any sample is NaN / ±infinity. Finite signed samples are accepted.
 let mut router = ChannelRouter::new();
 let decision = router.route([0.8, 0.2, 0.1]).unwrap();
 
@@ -258,7 +308,7 @@ The one neuron-like type here, `NeuromodNeuron` in [`router`](src/router.rs), is
 
 Spikenaut-SNN uses this crate for Dale-polarity wiring and multi-channel
 routing. That is a downstream consumer, not a requirement: nothing in the API
-assumes it, and depending on `synaptic-wiring` pulls in nothing beyond `serde`.
+assumes it, and depending on `synaptic-wiring` pulls in `serde` and `sha2`.
 
 ## Architecture
 

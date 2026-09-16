@@ -3,3 +3,5 @@
 ---
 exclude_paths:
   - ".github/workflows/**"
+  # Thin System-forwarding GlobalAlloc used only to count heap allocations.
+  - "tests/propagate_into_alloc.rs"
