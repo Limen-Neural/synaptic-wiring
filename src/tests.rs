@@ -948,7 +948,11 @@ fn rejection_does_not_self_heal_malformed_serde_state() {
         dopamine: f32::NAN,
         ..NeuromodState::balanced()
     };
-    assert!(router.route_modulated([0.5, 0.0, 0.0], &invalid_mods).is_err());
+    assert!(
+        router
+            .route_modulated([0.5, 0.0, 0.0], &invalid_mods)
+            .is_err()
+    );
     assert_eq!(
         router_snapshot(&router)["baseline_weights"],
         before["baseline_weights"],
