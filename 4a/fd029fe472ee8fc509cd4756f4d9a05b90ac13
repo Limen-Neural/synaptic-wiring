@@ -1,0 +1,10 @@
+Cargo.lock
+  3e84a94ad06a4878 5-104,114-156
+  bd4a7136bdc19fb2 157-188,201-247,254-259,266-286,317-354,398-408,435,439,462-471
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "4afd029fe472ee8fc509cd4756f4d9a05b90ac13",
+  "prompts": {}
+}
