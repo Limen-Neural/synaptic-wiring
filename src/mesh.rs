@@ -6,6 +6,8 @@
 //! It owns a [`SynapticGraph`] (the wiring diagram) and a [`SpikeDelayBuffer`]
 //! (the temporal delay infrastructure), and provides a single `propagate()`
 //! method that converts source spikes into delayed synaptic currents.
+//! Callers that already own an output buffer can use `propagate_into` /
+//! `propagate_graded_into` to reuse that storage each tick.
 //!
 //! # Usage
 //!
@@ -18,7 +20,11 @@
 //!
 //! // Each tick: provide binary spike vector, receive synaptic currents
 //! let spikes = vec![false; 64];
-//! let currents = mesh.propagate(&spikes);
+//! let _currents = mesh.propagate(&spikes);
+//!
+//! // Fixed-rate loops can reuse a caller-owned buffer instead:
+//! let mut currents = vec![0.0; 64];
+//! mesh.propagate_into(&spikes, &mut currents).unwrap();
 //! ```
 
 use serde::de::{Deserializer, Error as DeError};
@@ -47,6 +53,13 @@ pub struct SynapticMesh {
     delay_buffer: SpikeDelayBuffer,
     /// Current simulation tick.
     tick: u64,
+    /// Reused `(target, delay, current)` scratch for graded aggregation.
+    ///
+    /// Not part of checkpoint state: serde omits it, and constructors
+    /// reserve `synapse_count()` so `propagate_graded_into` does not
+    /// allocate on the success path after `new`.
+    #[serde(skip)]
+    pending_scratch: Vec<(usize, usize, f32)>,
 }
 
 #[derive(Deserialize)]
@@ -82,11 +95,11 @@ impl RawSynapticMesh {
                 self.delay_buffer.current_tick()
             ));
         }
-        Ok(SynapticMesh {
-            graph: self.graph,
-            delay_buffer: self.delay_buffer,
-            tick: self.tick,
-        })
+        Ok(SynapticMesh::from_parts(
+            self.graph,
+            self.delay_buffer,
+            self.tick,
+        ))
     }
 }
 
@@ -108,11 +121,7 @@ impl SynapticMesh {
     pub fn new(graph: SynapticGraph) -> Self {
         let max_delay = usize::from(graph.max_delay());
         let n = graph.neuron_count();
-        Self {
-            delay_buffer: SpikeDelayBuffer::new(n, max_delay),
-            graph,
-            tick: 0,
-        }
+        Self::from_parts(graph, SpikeDelayBuffer::new(n, max_delay), 0)
     }
 
     /// Create a mesh with a custom maximum delay (overriding graph's max).
@@ -145,11 +154,21 @@ impl SynapticMesh {
             )));
         }
         let n = graph.neuron_count();
-        Ok(Self {
-            delay_buffer: SpikeDelayBuffer::try_new(n, max_delay)?,
+        Ok(Self::from_parts(
             graph,
-            tick: 0,
-        })
+            SpikeDelayBuffer::try_new(n, max_delay)?,
+            0,
+        ))
+    }
+
+    fn from_parts(graph: SynapticGraph, delay_buffer: SpikeDelayBuffer, tick: u64) -> Self {
+        let pending_scratch = Vec::with_capacity(graph.synapse_count());
+        Self {
+            graph,
+            delay_buffer,
+            tick,
+            pending_scratch,
+        }
     }
 
     /// Propagate spikes through the mesh for one tick.
@@ -220,17 +239,67 @@ impl SynapticMesh {
     /// `tests/propagate_contract.rs` pins this contract — destination, sign,
     /// magnitude, and delivery tick — against a fixed four-neuron graph, and
     /// is a copyable starting point for your own simulation loop.
+    ///
+    /// This allocating wrapper is source-compatible with existing callers.
+    /// Fixed-rate loops that already own an output buffer should use
+    /// [`Self::propagate_into`] instead.
     pub fn propagate(&mut self, source_spikes: &[bool]) -> Result<Vec<f32>> {
         let n = self.graph.neuron_count();
-        if source_spikes.len() != n {
-            return Err(MeshError::NeuronCountMismatch {
-                expected: n,
-                got: source_spikes.len(),
-                context: "propagate source_spikes".into(),
-            });
-        }
+        require_len(source_spikes.len(), n, "propagate source_spikes")?;
+        let mut currents = vec![0.0; n];
+        self.propagate_into(source_spikes, &mut currents)?;
+        Ok(currents)
+    }
 
-        // Inject spikes from all firing neurons into the delay buffer
+    /// Propagate spikes into a caller-owned output buffer.
+    ///
+    /// Functionally identical to [`Self::propagate`]: same destinations,
+    /// signs, magnitudes, and delivery ticks. Writes this tick's synaptic
+    /// currents into `output` instead of allocating a new `Vec<f32>`.
+    /// After [`Self::new`], a successful call performs no heap allocations.
+    ///
+    /// # Buffer contract
+    ///
+    /// - `source_spikes` and `output` must both have length `neuron_count()`.
+    /// - `output` is **overwritten** with this tick's delivered currents. It
+    ///   is not accumulated into; values present before the call are discarded
+    ///   on success.
+    /// - `source_spikes` (`&[bool]`) and `output` (`&mut [f32]`) cannot alias.
+    ///   Rust's borrow checker rejects overlapping borrows of the same memory.
+    ///
+    /// # Error atomicity
+    ///
+    /// If this method returns `Err`, the mesh tick, delay buffers, and
+    /// `output` are left unchanged. Length mismatches are rejected before any
+    /// mutation.
+    ///
+    /// ```rust
+    /// use synaptic_wiring::mesh::SynapticMesh;
+    /// use synaptic_wiring::topology::SynapticGraph;
+    /// use synaptic_wiring::types::{Polarity, SynapseDescriptor};
+    ///
+    /// let graph = SynapticGraph::from_descriptors(
+    ///     2,
+    ///     &[SynapseDescriptor {
+    ///         source: 0,
+    ///         target: 1,
+    ///         weight: 0.75,
+    ///         delay: 0,
+    ///         polarity: Polarity::Excitatory,
+    ///     }],
+    /// )?;
+    /// let mut mesh = SynapticMesh::new(graph);
+    /// let spikes = [true, false];
+    /// let mut currents = [0.0; 2];
+    /// mesh.propagate_into(&spikes, &mut currents)?;
+    /// assert_eq!(currents, [0.0, 0.75]);
+    /// # Ok::<(), synaptic_wiring::MeshError>(())
+    /// ```
+    pub fn propagate_into(&mut self, source_spikes: &[bool], output: &mut [f32]) -> Result<()> {
+        let n = self.graph.neuron_count();
+        require_len(source_spikes.len(), n, "propagate_into source_spikes")?;
+        require_len(output.len(), n, "propagate_into output")?;
+
         for (src, &fired) in source_spikes.iter().enumerate() {
             if !fired {
                 continue;
@@ -241,14 +310,10 @@ impl SynapticMesh {
             }
         }
 
-        // Drain currents that have arrived at this tick
-        let currents = self.delay_buffer.drain_current_tick();
-
-        // Advance the buffer
+        self.delay_buffer.drain_current_tick_into(output)?;
         self.delay_buffer.advance();
         self.tick += 1;
-
-        Ok(currents)
+        Ok(())
     }
 
     /// Propagate with floating-point spike strengths instead of binary.
@@ -262,21 +327,67 @@ impl SynapticMesh {
     ///   NaN, ±infinity, non-finite `weight * activation` products, and
     ///   non-finite per-slot aggregates (including current already in the
     ///   delay buffer) are rejected before any buffer or tick mutation.
+    ///
+    /// This allocating wrapper is source-compatible with existing callers.
+    /// Fixed-rate loops that already own an output buffer should use
+    /// [`Self::propagate_graded_into`] instead.
     pub fn propagate_graded(&mut self, source_activations: &[f32]) -> Result<Vec<f32>> {
         let n = self.graph.neuron_count();
-        if source_activations.len() != n {
-            return Err(MeshError::NeuronCountMismatch {
-                expected: n,
-                got: source_activations.len(),
-                context: "propagate_graded source_activations".into(),
-            });
-        }
+        require_len(
+            source_activations.len(),
+            n,
+            "propagate_graded source_activations",
+        )?;
+        let mut currents = vec![0.0; n];
+        self.propagate_graded_into(source_activations, &mut currents)?;
+        Ok(currents)
+    }
+
+    /// Propagate graded activations into a caller-owned output buffer.
+    ///
+    /// Functionally identical to [`Self::propagate_graded`]: same destinations,
+    /// signs, magnitudes, and delivery ticks, including the same rejection of
+    /// non-finite activations, products, and per-slot aggregates. Writes this
+    /// tick's synaptic currents into `output` instead of allocating a new
+    /// `Vec<f32>`. After [`Self::new`], a successful call reuses internal
+    /// scratch and performs no heap allocations.
+    ///
+    /// # Buffer contract
+    ///
+    /// - `source_activations` and `output` must both have length
+    ///   `neuron_count()`.
+    /// - `output` is **overwritten** with this tick's delivered currents. It
+    ///   is not accumulated into; values present before the call are discarded
+    ///   on success.
+    /// - `source_activations` and `output` cannot alias. Rust's borrow checker
+    ///   rejects overlapping `&[f32]` / `&mut [f32]` borrows of the same
+    ///   memory, so in-place scaling of the output slice is not possible
+    ///   through this API.
+    ///
+    /// # Error atomicity
+    ///
+    /// If this method returns `Err`, the mesh tick, delay buffers, and
+    /// `output` are left unchanged. Length mismatches and non-finite
+    /// activations, products, or aggregates are rejected before any mutation.
+    pub fn propagate_graded_into(
+        &mut self,
+        source_activations: &[f32],
+        output: &mut [f32],
+    ) -> Result<()> {
+        let n = self.graph.neuron_count();
+        require_len(
+            source_activations.len(),
+            n,
+            "propagate_graded_into source_activations",
+        )?;
+        require_len(output.len(), n, "propagate_graded_into output")?;
 
         // One traversal: validate each product, then group additions by
         // (target, delay) so aggregates can be checked before any inject.
-        let mut pending: Vec<(usize, usize, f32)> = Vec::new();
+        self.pending_scratch.clear();
         for (src, &activation) in source_activations.iter().enumerate() {
             if !activation.is_finite() {
+                self.pending_scratch.clear();
                 return Err(MeshError::InvalidConfig(format!(
                     "propagate_graded source_activations[{src}] must be finite, got {activation}"
                 )));
@@ -287,32 +398,49 @@ impl SynapticMesh {
             for (target, weight, delay, _) in self.graph.outgoing(src) {
                 let current = weight * activation;
                 if !current.is_finite() {
+                    self.pending_scratch.clear();
                     return Err(MeshError::InvalidConfig(format!(
                         "propagate_graded source_activations[{src}] * synapse weight must be finite, got {current}"
                     )));
                 }
-                accumulate_slot_current(&mut pending, target as usize, delay as usize, current);
+                accumulate_slot_current(
+                    &mut self.pending_scratch,
+                    target as usize,
+                    delay as usize,
+                    current,
+                );
             }
         }
 
-        for &(target, delay, additional) in &pending {
+        for &(target, delay, additional) in &self.pending_scratch {
             let total = self.delay_buffer.scheduled_current(target, delay) + additional;
             if !additional.is_finite() || !total.is_finite() {
+                self.pending_scratch.clear();
                 return Err(MeshError::InvalidConfig(format!(
                     "propagate_graded would produce a non-finite delay-buffer total for target {target}"
                 )));
             }
         }
 
-        for (target, delay, additional) in pending {
-            self.delay_buffer.inject(target, additional, delay);
+        for target in 0..n {
+            let current = self.delay_buffer.scheduled_current(target, 0);
+            if !current.is_finite() {
+                self.pending_scratch.clear();
+                return Err(MeshError::InvalidConfig(format!(
+                    "propagate_graded would produce a non-finite delay-buffer total for target {target}"
+                )));
+            }
         }
 
-        let currents = self.delay_buffer.drain_current_tick();
+        for (target, delay, additional) in self.pending_scratch.iter().copied() {
+            self.delay_buffer.inject(target, additional, delay);
+        }
+        self.pending_scratch.clear();
+
+        self.delay_buffer.drain_current_tick_into(output)?;
         self.delay_buffer.advance();
         self.tick += 1;
-
-        Ok(currents)
+        Ok(())
     }
 
     /// Current simulation tick.
@@ -361,6 +489,7 @@ impl SynapticMesh {
     /// Reset delay buffer and tick counter.
     pub fn reset(&mut self) {
         self.delay_buffer.reset();
+        self.pending_scratch.clear();
         self.tick = 0;
     }
 
@@ -368,6 +497,17 @@ impl SynapticMesh {
     pub fn to_gpu_arrays(&self) -> (Vec<u32>, Vec<u32>, Vec<f32>, Vec<u16>) {
         self.graph.to_gpu_arrays()
     }
+}
+
+fn require_len(got: usize, expected: usize, context: &str) -> Result<()> {
+    if got != expected {
+        return Err(MeshError::NeuronCountMismatch {
+            expected,
+            got,
+            context: context.into(),
+        });
+    }
+    Ok(())
 }
 
 fn accumulate_slot_current(
@@ -962,5 +1102,116 @@ mod tests {
             last_layer_activated,
             "feed-forward should eventually reach the output layer"
         );
+    }
+
+    fn assert_meshes_match(left: &mut SynapticMesh, right: &mut SynapticMesh, spikes: &[bool]) {
+        let allocated = left.propagate(spikes).unwrap();
+        let mut reused = vec![7.0; spikes.len()];
+        right.propagate_into(spikes, &mut reused).unwrap();
+        assert_eq!(allocated, reused);
+        assert_eq!(left.tick(), right.tick());
+    }
+
+    #[test]
+    fn propagate_into_matches_allocating_zero_and_delayed() {
+        for delay in [0_u16, 2] {
+            let graph = two_neuron_delay_graph(delay);
+            let mut alloc = SynapticMesh::new(graph.clone());
+            let mut reuse = SynapticMesh::new(graph);
+            assert_meshes_match(&mut alloc, &mut reuse, &[true, false]);
+            assert_meshes_match(&mut alloc, &mut reuse, &[false, false]);
+            assert_meshes_match(&mut alloc, &mut reuse, &[false, false]);
+        }
+    }
+
+    #[test]
+    fn propagate_graded_into_matches_allocating_signed_and_delayed() {
+        let graph = two_neuron_delay_graph(2);
+        let mut alloc = SynapticMesh::new(graph.clone());
+        let mut reuse = SynapticMesh::new(graph);
+        for activations in [[0.5, 0.0], [0.0, 0.0], [-0.25, 0.0], [0.0, 0.0]] {
+            let allocated = alloc.propagate_graded(&activations).unwrap();
+            let mut reused = vec![7.0; 2];
+            reuse
+                .propagate_graded_into(&activations, &mut reused)
+                .unwrap();
+            assert_eq!(allocated, reused);
+            assert_eq!(alloc.tick(), reuse.tick());
+        }
+    }
+
+    #[test]
+    fn propagate_into_rejects_wrong_sizes_without_mutation() {
+        let mut mesh = SynapticMesh::new(two_neuron_delay_graph(2));
+        mesh.propagate(&[true, false]).unwrap();
+        let tick = mesh.tick();
+        let mut sentinel = [42.0_f32, 42.0];
+
+        assert!(mesh.propagate_into(&[true], &mut sentinel).is_err());
+        assert_eq!(mesh.tick(), tick);
+        assert_eq!(sentinel, [42.0, 42.0]);
+
+        let mut too_short = [42.0_f32];
+        assert!(mesh.propagate_into(&[true, false], &mut too_short).is_err());
+        assert_eq!(mesh.tick(), tick);
+        assert_eq!(too_short, [42.0]);
+
+        // In-flight delay-2 current must still arrive two ticks after inject.
+        assert_eq!(mesh.propagate(&[false, false]).unwrap()[1], 0.0);
+        let arrived = mesh.propagate(&[false, false]).unwrap();
+        assert!((arrived[1] - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn propagate_graded_into_rejects_non_finite_without_mutating_output() {
+        let mut mesh = SynapticMesh::new(two_neuron_delay_graph(2));
+        mesh.propagate(&[true, false]).unwrap();
+        let tick = mesh.tick();
+        let mut sentinel = [42.0_f32, 42.0];
+
+        for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            let err = mesh
+                .propagate_graded_into(&[0.0, bad], &mut sentinel)
+                .unwrap_err();
+            assert!(
+                err.to_string().contains("must be finite"),
+                "unexpected error for {bad}: {err}"
+            );
+            assert_eq!(mesh.tick(), tick);
+            assert_eq!(sentinel, [42.0, 42.0]);
+        }
+
+        assert_eq!(mesh.propagate(&[false, false]).unwrap()[1], 0.0);
+        let arrived = mesh.propagate(&[false, false]).unwrap();
+        assert!((arrived[1] - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn checkpoint_omits_pending_scratch() {
+        let mesh = SynapticMesh::new(two_neuron_delay_graph(0));
+        let value = serde_json::to_value(&mesh).unwrap();
+        assert!(value.get("pending_scratch").is_none());
+        let restored: SynapticMesh = serde_json::from_value(value).unwrap();
+        assert_eq!(restored.neuron_count(), 2);
+        assert_eq!(restored.tick(), 0);
+    }
+
+    #[test]
+    fn propagate_graded_into_rejects_non_finite_current_in_delay_buffer_with_empty_scratch() {
+        let mut mesh = SynapticMesh::new(two_neuron_delay_graph(0));
+        mesh.delay_buffer.inject(0, f32::NAN, 0);
+        let tick = mesh.tick();
+        let mut sentinel = [42.0_f32, 42.0];
+
+        let err = mesh
+            .propagate_graded_into(&[0.0, 0.0], &mut sentinel)
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("non-finite delay-buffer total"),
+            "unexpected error: {err}"
+        );
+        assert_eq!(mesh.tick(), tick);
+        assert_eq!(sentinel, [42.0, 42.0]);
+        assert!(mesh.delay_buffer.scheduled_current(0, 0).is_nan());
     }
 }
