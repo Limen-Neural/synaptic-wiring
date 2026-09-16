@@ -7,12 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- **Docker**: rustdoc snapshot path after the crate rename is
-  `synaptic_wiring/` (Dockerfile + docker.yml verify still looked for
-  `synaptic_mesh/`).
-
 ### Changed
 
 - **Crate rename**: the Cargo package is now `synaptic-wiring` (was
@@ -24,6 +18,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Topology digest**: `SynapticGraph::topology_digest` / `SynapticMesh::topology_digest`
+  return a printable, schema-versioned SHA-256 of the canonical logical graph
+  (neuron count, sorted edges, IEEE weight bit patterns, delay, polarity).
+  Insertion order, host endianness, and serde formatting do not affect the
+  value. IEEE `+0.0` / `-0.0` are hashed as distinct bit patterns; NaN/Inf
+  never appear because graph construction already rejects them
+  (LIM-1219).
+- **Mesh**: `SynapticMesh::propagate_into` and `propagate_graded_into` write
+  this tick's currents into a caller-owned `&mut [f32]`. The allocating
+  `propagate` / `propagate_graded` methods remain as source-compatible
+  wrappers. Wrong-sized or non-finite input is rejected before tick, delay
+  buffer, or output mutation. After `new()`, a successful reuse-path tick
+  performs no heap allocations (issue LIM-1222).
+- **Delay buffer**: `SpikeDelayBuffer::drain_current_tick_into` drains into
+  a caller-owned buffer; the allocating drain is a wrapper around it.
+- **Benches**: Criterion cases for 16 / 256 / 4096 neurons with short and
+  long delays, comparing allocating vs caller-buffer propagation.
 - **Tests**: `tests/checkpoint_resume/` — seeded property/fuzz coverage that a
   restored `SynapticMesh` continues tick-for-tick identically to the live mesh
   with spikes in flight (currents, tick, queued deliveries). Covers generated
@@ -45,6 +56,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The MSRV pin-agreement check now also requires `coverage.yml`
   to stay on the same Rust version as `ci.yml`. JUnit results are
   uploaded from `target/nextest/ci/junit.xml` (issue #77 / LIM-1180).
+
+### Fixed
+
+- **Packaging**: Docker rustdoc snapshot path now matches the `synaptic-wiring`
+  crate name (`target/doc/synaptic_wiring/`) after the rename (LIM-1219).
+- **ChannelRouter**: `route` and `route_modulated` reject NaN/±Inf channel
+  signals and neuromodulator fields before mutating neurons, fatigue,
+  adaptive weights, or `total_routes`. Errors name the channel index
+  (`MeshError::NonFiniteSignal`) or modulator field
+  (`MeshError::NonFiniteNeuromodulator`). Finite modulator values outside
+  `[0, 1]` are rejected (`MeshError::OutOfRangeNeuromodulator`) rather than
+  silently clamped. Finite signed signals keep their existing weighted-sum
+  behavior. (LIM-1229)
 
 ## [0.3.0] - 2026-09-13
 

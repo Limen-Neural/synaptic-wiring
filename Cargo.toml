@@ -37,6 +37,7 @@ exclude = [
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
+sha2 = "0.10"
 
 [dev-dependencies]
 serde_json = "1.0"
@@ -44,6 +45,11 @@ serde_json = "1.0"
 # the published crate still depends solely on `serde`. `bincode` 1.x is
 # unmaintained (RUSTSEC-2025-0141); postcard is the advised alternative.
 postcard = { version = "1.1", default-features = false, features = ["use-std"] }
+criterion = { version = "0.5", default-features = false }
+
+[[bench]]
+name = "propagate"
+harness = false
 
 [workspace]
 
@@ -70,10 +76,9 @@ lto = "thin"
 codegen-units = 1
 strip = true
 
-# Mirrors `release` so that once benchmarks are added (GH#17, not yet
-# implemented), they reflect real release performance; keep debug symbols
-# so profilers can still symbolize (override `release`'s strip, which
-# would otherwise discard them).
+# Mirrors `release` so criterion benches (`cargo bench`) reflect real
+# release performance, but keeps debug symbols (`strip = false`) so
+# profilers can still symbolize (override `release`'s strip).
 [profile.bench]
 inherits = "release"
 debug = true

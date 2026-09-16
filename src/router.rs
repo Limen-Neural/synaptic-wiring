@@ -14,6 +14,7 @@
 //! need to pick a few active channels out of many inputs; ignore it entirely
 //! if you only need wiring, topology, and delays.
 
+use crate::error::{MeshError, Result};
 use serde::{Deserialize, Serialize};
 
 /// Integration timesteps per routing decision (more → more stable).
@@ -174,11 +175,22 @@ impl Default for RouterConfig {
     }
 }
 
+/// Inclusive unit interval required of every [`NeuromodState`] field.
+const NEUROMOD_MIN: f32 = 0.0;
+const NEUROMOD_MAX: f32 = 1.0;
+
 /// Neuromodulatory state for adaptive routing.
 ///
 /// Cortisol (stress) increases resistance — channels become harder to activate.
 /// Dopamine (reward) increases conductance — channels become easier to activate.
 /// Serotonin (patience) reduces persistence — faster decay of activation.
+///
+/// Every field must be **finite** and in `[0.0, 1.0]` (IEEE signed zero is
+/// accepted). [`ChannelRouter::route_modulated`] rejects NaN, ±infinity, and
+/// finite out-of-range values **before** any routing timestep; they are not
+/// sanitized to zero and not silently clamped. Derived thresholds and leaks
+/// may still clamp internally — that is a stability bound on the neuron
+/// parameters, not an ingress policy for these fields.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct NeuromodState {
     /// Stress level (0.0 = calm, 1.0 = max stress).
@@ -220,6 +232,27 @@ impl NeuromodState {
             serotonin: 0.0,
         }
     }
+
+    /// Reject non-finite fields and values outside `[0, 1]`.
+    ///
+    /// Finite out-of-range values are **rejected**, not clamped, so a caller
+    /// cannot smuggle `cortisol = 2.0` (or a negative field) past ingress and
+    /// rely on the downstream threshold/leak clamp to hide it.
+    pub fn validate(&self) -> Result<()> {
+        for (field, value) in [
+            ("cortisol", self.cortisol),
+            ("dopamine", self.dopamine),
+            ("serotonin", self.serotonin),
+        ] {
+            if !value.is_finite() {
+                return Err(MeshError::NonFiniteNeuromodulator { field });
+            }
+            if !(NEUROMOD_MIN..=NEUROMOD_MAX).contains(&value) {
+                return Err(MeshError::OutOfRangeNeuromodulator { field, value });
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Sparse activation decision from the SNN router.
@@ -244,6 +277,33 @@ impl RoutingDecision {
     }
 }
 
+/// Shared ingress checks for [`ChannelRouter::route`] and
+/// [`ChannelRouter::route_modulated`]. Length, signal finiteness, and
+/// neuromodulator validity are all decided before any router field changes.
+fn validate_route_ingress(
+    signals: &[f32],
+    mods: &NeuromodState,
+    expected_len: usize,
+    error_context: &str,
+) -> Result<()> {
+    if signals.len() != expected_len {
+        return Err(MeshError::NeuronCountMismatch {
+            expected: expected_len,
+            got: signals.len(),
+            context: error_context.into(),
+        });
+    }
+    for (index, &value) in signals.iter().enumerate() {
+        if !value.is_finite() {
+            return Err(MeshError::NonFiniteSignal {
+                index,
+                context: error_context.into(),
+            });
+        }
+    }
+    mods.validate()
+}
+
 /// Generic multi-channel SNN Router.
 ///
 /// Integrates multi-channel signals over `ROUTING_TIMESTEPS` to produce
@@ -255,6 +315,10 @@ impl RoutingDecision {
 /// - Channels weaken when idle (use-it-or-lose-it decay)
 /// - Fatigue accumulates with activation, cortisol amplifies it
 /// - The router naturally seeks the least-resistance pathway
+///
+/// Ingress is atomic: non-finite signals or invalid [`NeuromodState`] values
+/// return a structured [`MeshError`] and leave neurons, fatigue, adaptive
+/// weights, and `total_routes` unchanged.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ChannelRouter {
     neurons: Vec<NeuromodNeuron>,
@@ -318,17 +382,21 @@ impl ChannelRouter {
 
     /// Route raw channel signals through the SNN (non-modulated).
     ///
-    /// `signals` must have length equal to `config.channel_count`.
+    /// `signals` must have length equal to `config.channel_count`. Every
+    /// sample must be **finite**; NaN and ±infinity are rejected with
+    /// [`MeshError::NonFiniteSignal`] naming the channel index. Finite
+    /// **signed** samples are accepted and participate in the weighted sum
+    /// (a negative input inhibits).
+    ///
+    /// Validation runs **before** any neuron, fatigue, weight, or
+    /// `total_routes` mutation, including the deserialized-state self-heal.
     ///
     /// Backward-compatible thin wrapper around [`ChannelRouter::route_modulated`]. The error
     /// context reported on a signal-length mismatch is `"route signals"`,
     /// matching the original pre-neuromodulation API — callers using this
     /// public method see the same error message they did before, even though
     /// the implementation now delegates to `route_modulated` internally.
-    pub fn route<S: AsRef<[f32]>>(
-        &mut self,
-        signals: S,
-    ) -> Result<RoutingDecision, crate::error::MeshError> {
+    pub fn route<S: AsRef<[f32]>>(&mut self, signals: S) -> Result<RoutingDecision> {
         self.route_modulated_with_context(signals, &NeuromodState::balanced(), "route signals")
     }
 
@@ -341,32 +409,33 @@ impl ChannelRouter {
     /// - Serotonin increases leak (reduces persistence)
     /// - Inactive channels decay toward baseline weights
     /// - Active channels potentiate (dopamine-gated)
+    ///
+    /// `signals` follow the same finite/signed rules as [`ChannelRouter::route`].
+    /// `mods` is validated via [`NeuromodState::validate`] before any routing
+    /// timestep: non-finite fields become [`MeshError::NonFiniteNeuromodulator`],
+    /// and finite values outside `[0, 1]` become
+    /// [`MeshError::OutOfRangeNeuromodulator`]. Both this method and
+    /// [`ChannelRouter::route`] share that ingress check.
     pub fn route_modulated<S: AsRef<[f32]>>(
         &mut self,
         signals: S,
         mods: &NeuromodState,
-    ) -> Result<RoutingDecision, crate::error::MeshError> {
+    ) -> Result<RoutingDecision> {
         self.route_modulated_with_context(signals, mods, "route_modulated signals")
     }
 
     /// Internal routing implementation. The `error_context` argument is the
-    /// string used in the `NeuronCountMismatch` error so each public entry
-    /// point can report the method the caller actually invoked.
+    /// string used in length-mismatch and non-finite-signal errors so each
+    /// public entry point can report the method the caller actually invoked.
     fn route_modulated_with_context<S: AsRef<[f32]>>(
         &mut self,
         signals: S,
         mods: &NeuromodState,
         error_context: &str,
-    ) -> Result<RoutingDecision, crate::error::MeshError> {
+    ) -> Result<RoutingDecision> {
         let signals = signals.as_ref();
         let n = self.config.channel_count;
-        if signals.len() != n {
-            return Err(crate::error::MeshError::NeuronCountMismatch {
-                expected: n,
-                got: signals.len(),
-                context: error_context.into(),
-            });
-        }
+        validate_route_ingress(signals, mods, n, error_context)?;
 
         // Self-heal: keep neuromod state vectors aligned with the current
         // channel count (e.g. after deserializing an older router).

@@ -35,7 +35,7 @@ that matches what you're doing instead of reaching for a one-off
 | `dev`     | `cargo build` / `cargo run`  | `opt-level = 0`, full debug info, incremental compiles — fastest edit/compile loop. |
 | `test`    | `cargo test`                 | Inherits `dev` but bumps to `opt-level = 1` so the unit/property-test suite (GH#21) runs faster, while keeping compile times close to `dev`. |
 | `release` | `cargo build --release`      | `opt-level = 3`, thin LTO, single codegen unit, stripped — tuned for the crates.io publish (GH#37): best runtime performance and smallest binary. |
-| `bench`   | `cargo bench`                | Inherits `release` so that once benchmarks are added (GH#17, not yet implemented), they reflect real release performance, but keeps debug symbols (`strip = false`) so profilers can still symbolize. |
+| `bench`   | `cargo bench`                | Inherits `release` so criterion benches reflect real release performance, but keeps debug symbols (`strip = false`) so profilers can still symbolize. |
 
 The rationale above is kept in sync with the comments on each
 `[profile.*]` block in `Cargo.toml` — update both together if a profile

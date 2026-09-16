@@ -261,3 +261,31 @@ fn mesh_reports_fixture_shape_and_rejects_mismatched_input() {
     assert!(mesh.propagate(&[false; N - 1]).is_err());
     assert!(mesh.propagate(&[false; N + 1]).is_err());
 }
+
+/// Caller-buffer APIs are a drop-in reuse of the allocating contract: same
+/// destinations, signs, magnitudes, and delivery ticks on this fixture.
+#[test]
+fn propagate_into_matches_allocating_on_fixture() {
+    let mut alloc = fixture();
+    let mut reuse = fixture();
+    let sequence = [spikes(&[0]), spikes(&[]), spikes(&[]), spikes(&[1, 2])];
+    let mut output = [0.0; N];
+    for firing in &sequence {
+        let allocated = alloc.propagate(firing).unwrap();
+        reuse.propagate_into(firing, &mut output).unwrap();
+        assert_eq!(allocated.as_slice(), output.as_slice());
+        assert_eq!(alloc.tick(), reuse.tick());
+    }
+
+    let mut alloc = fixture();
+    let mut reuse = fixture();
+    let graded = [[0.5, 0.0, 0.0, 0.0], [0.0; N], [0.0, 0.0, -0.5, 0.0]];
+    for activations in graded {
+        let allocated = alloc.propagate_graded(&activations).unwrap();
+        reuse
+            .propagate_graded_into(&activations, &mut output)
+            .unwrap();
+        assert_eq!(allocated.as_slice(), output.as_slice());
+        assert_eq!(alloc.tick(), reuse.tick());
+    }
+}

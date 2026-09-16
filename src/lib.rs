@@ -9,7 +9,8 @@
 //!
 //! Reach for it to generate biologically plausible topologies, give synapses
 //! axonal delays, respect Dale's law, or store a large sparse weight matrix
-//! compactly — all deterministically, with `serde` as the only dependency.
+//! compactly — all deterministically, with `serde` and `sha2` as the only
+//! runtime dependencies.
 //!
 //! ## Where to start
 //!
@@ -19,14 +20,20 @@
 //!    every synapse yourself.
 //! 2. [`SynapticMesh::new`] to wrap it, then [`SynapticMesh::propagate`] once
 //!    per tick — its docs state the full delivery contract (destination,
-//!    sign, magnitude, tick).
+//!    sign, magnitude, tick). Reuse a caller-owned buffer with
+//!    [`SynapticMesh::propagate_into`] and
+//!    [`SynapticMesh::propagate_graded_into`] when a
+//!    fixed-rate loop must avoid allocating every tick.
 //! 3. [`topology::assign_delays`] to rewrite a descriptor list's delays from
 //!    neuron positions, and [`topology::apply_dale_polarity`] to compute a
 //!    per-neuron excitatory/inhibitory split — both work on the inputs to
 //!    [`SynapticGraph::from_descriptors`], not on an already-built graph.
-//! 4. [`sparse::SparseSynapticMap`] or [`SynapticMesh::to_gpu_arrays`] when
+//! 4. [`SynapticGraph::topology_digest`] (or [`SynapticMesh::topology_digest`])
+//!    for a printable, versioned identifier of the logical graph, usable in
+//!    manifests and cross-runtime comparisons.
+//! 5. [`sparse::SparseSynapticMap`] or [`SynapticMesh::to_gpu_arrays`] when
 //!    you need the weights as flat CSR arrays.
-//! 5. [`router::ChannelRouter`] only if you also want a sparse channel
+//! 6. [`router::ChannelRouter`] only if you also want a sparse channel
 //!    classifier; it is independent of the mesh and safe to ignore.
 //!
 //! [`generate_random`]: topology::generate_random
@@ -37,9 +44,9 @@
 //!
 //! | Module | Purpose |
 //! |--------|---------|
-//! | [`topology`] | Network graph construction — CSR adjacency with delay & polarity metadata, plus deterministic generators (Erdős–Rényi, Watts–Strogatz, Barabási–Albert, layered) |
+//! | [`topology`] | Network graph construction — CSR adjacency with delay & polarity metadata, deterministic generators (Erdős–Rényi, Watts–Strogatz, Barabási–Albert, layered), and a versioned [`TopologyDigest`] |
 //! | [`delay`] | Temporal delay infrastructure — ring-buffer spike queues for tick-aligned delivery with configurable axonal propagation delays |
-//! | [`mesh`] | [`SynapticMesh`] orchestrator — the top-level struct owning topology + delays, provides `propagate()` for spike → current conversion |
+//! | [`mesh`] | [`SynapticMesh`] orchestrator — the top-level struct owning topology + delays, provides `propagate()` / `propagate_into()` for spike → current conversion |
 //! | [`sparse`] | Compressed Sparse Row (CSR) synaptic maps for GPU-optimized weight matrices |
 //! | [`router`] | Optional multi-channel classifier built on [`NeuromodNeuron`], a router-internal integration primitive |
 //!
@@ -142,7 +149,10 @@ pub mod sparse;
 pub use delay::SpikeDelayBuffer;
 pub use error::{MeshError, Result};
 pub use mesh::SynapticMesh;
-pub use topology::SynapticGraph;
+pub use topology::{
+    SynapticGraph, TOPOLOGY_DIGEST_ALGORITHM, TOPOLOGY_DIGEST_DOMAIN,
+    TOPOLOGY_DIGEST_SCHEMA_VERSION, TopologyDigest,
+};
 pub use types::{
     ConnectionModel, DelayModel, DelayTicks, NeuronId, Polarity, SynapseDescriptor, TopologyConfig,
 };

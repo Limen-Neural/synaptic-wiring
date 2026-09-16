@@ -130,8 +130,8 @@ jobs:
       - name: Test (release profile)
         run: cargo test --locked --release --all-features
 
-      # Exercises [profile.bench] (see #40/#41). Compile-only: no benches are
-      # defined yet (#17), so this just confirms the profile itself is valid.
+      # Exercises [profile.bench] (see #40/#41) and compiles the criterion
+      # harness in `benches/` without running it (LIM-1222).
       - name: Bench compile check (bench profile)
         run: cargo bench --locked --all-features --no-run
   package:
