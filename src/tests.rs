@@ -205,42 +205,33 @@ fn route_modulated_error_context_reports_internal_method_name() {
 }
 
 #[test]
-fn deserialized_router_with_empty_inner_baseline_weights_recovers() {
-    // Regression test: a router deserialized from a payload that was produced
-    // with the wrong inner-row shape for `baseline_weights` (e.g. `[[], [], []]`)
-    // used to panic at the first `apply_plasticity` call. The lazy repair in
-    // `ensure_neuromod_state_synced` must now rebuild the full 2D table from
-    // the current neuron weights when ANY row is the wrong size.
-    //
-    // We drive the test through the public serde API: build a valid router,
-    // serialize it, mutate the JSON to drop the inner rows of `baseline_weights`,
-    // and confirm the router self-heals on the first modulated route instead
-    // of panicking at `apply_plasticity`.
+#[should_panic(expected = "invalid router config (routing_timesteps): must be in 1..=4096, got 0")]
+fn zero_routing_timesteps_panics() {
+    let config = RouterConfig {
+        routing_timesteps: 0,
+        ..RouterConfig::default()
+    };
+    let _router = ChannelRouter::with_config(config);
+}
+
+#[test]
+fn deserialized_router_with_empty_inner_baseline_weights_is_rejected() {
     let router = ChannelRouter::new();
     let mut json: serde_json::Value =
         serde_json::to_value(&router).expect("Fresh router must serialize");
-    // Force the malformed-payload case: outer length matches channel count (3)
-    // but each row is empty.
     json["baseline_weights"] = serde_json::json!([[], [], []]);
 
-    let mut router: ChannelRouter = serde_json::from_value(json)
-        .expect("Malformed-payload router should still deserialize (lazy repair on first route)");
-
-    // The first modulated route must self-heal instead of panicking on
-    // `apply_plasticity` indexing `baseline_weights[i][j]`.
-    let result = router.route_modulated([0.5, 0.0, 0.0], &NeuromodState::balanced());
+    let err = serde_json::from_value::<ChannelRouter>(json)
+        .expect_err("inconsistent baseline_weights must not deserialize");
+    let msg = err.to_string();
     assert!(
-        result.is_ok(),
-        "Malformed baseline_weights must self-heal on first route: {:?}",
-        result.err()
+        msg.contains("baseline_weights"),
+        "error should name the field, got: {msg}"
     );
 }
 
 #[test]
-fn deserialized_router_with_missing_neuron_fields_recovers() {
-    // Regression test: older or hand-authored payloads may omit fields from a
-    // NeuromodNeuron. Deserialization must use the neuron's defaults so the
-    // router's existing lazy state repair can run on the first route.
+fn deserialized_router_with_missing_neuron_weights_is_rejected() {
     let router = ChannelRouter::new();
     let mut json: serde_json::Value =
         serde_json::to_value(&router).expect("Fresh router must serialize");
@@ -249,57 +240,34 @@ fn deserialized_router_with_missing_neuron_fields_recovers() {
         .unwrap()
         .remove("weights");
 
-    let mut router: ChannelRouter = serde_json::from_value(json)
-        .expect("Missing neuron fields should deserialize using defaults");
-
-    let result = router.route_modulated([0.5, 0.0, 0.0], &NeuromodState::balanced());
+    let err = serde_json::from_value::<ChannelRouter>(json)
+        .expect_err("missing neuron weights must not deserialize");
+    let msg = err.to_string();
     assert!(
-        result.is_ok(),
-        "Router with missing neuron fields must self-heal on first route: {:?}",
-        result.err()
+        msg.contains("weights"),
+        "error should name the field, got: {msg}"
     );
 }
 
 #[test]
-fn apply_feedback_on_deserialized_router_with_malformed_baseline_does_not_panic() {
-    // Regression test for chatgpt-codex P2 thread #NyuBl / devin-ai BUG #NytR0.
-    // Calling `apply_feedback` on a deserialized router whose `baseline_weights`
-    // outer length matches the channel count but whose inner rows are empty
-    // (the same shape that `route_modulated` already repairs) used to panic at
-    // `baseline_weights[channel_idx][channel_idx]` inside `sync_baseline_after_feedback`.
-    //
-    // The fix: `apply_feedback` now calls `ensure_neuromod_state_synced` at the
-    // top, which rebuilds the full 2D table from the current neuron weights
-    // before any indexing happens. This test exercises the path *without* going
-    // through `route_modulated` first.
+fn apply_feedback_on_deserialized_legacy_router_does_not_panic() {
+    // Legacy snapshots omit `channel_fatigue` / `baseline_weights`; those
+    // fields are filled from the neuron bank. `apply_feedback` must still
+    // be safe without a prior `route_modulated` call.
     let router = ChannelRouter::new();
     let mut json: serde_json::Value =
         serde_json::to_value(&router).expect("Fresh router must serialize");
-    // Force the malformed-payload case: outer length matches channel count (3)
-    // but each row is empty.
-    json["baseline_weights"] = serde_json::json!([[], [], []]);
+    json.as_object_mut().unwrap().remove("channel_fatigue");
+    json.as_object_mut().unwrap().remove("baseline_weights");
 
     let mut router: ChannelRouter =
-        serde_json::from_value(json).expect("Malformed-payload router should still deserialize");
+        serde_json::from_value(json).expect("legacy snapshot should deserialize");
 
-    // `apply_feedback` must self-heal instead of panicking on
-    // `baseline_weights[channel_idx][channel_idx]`.
     router.apply_feedback(0, 1.0);
 
-    // And the self-heal must leave a well-formed `baseline_weights` table behind.
     let w = router.weight_matrix();
     assert_eq!(w.len(), 3, "channel count must be intact after feedback");
     assert_eq!(w[0].len(), 3, "weights[0] must be intact after feedback");
-}
-
-#[test]
-#[should_panic(expected = "routing_timesteps must be > 0")]
-fn zero_routing_timesteps_panics() {
-    let config = RouterConfig {
-        routing_timesteps: 0,
-        ..RouterConfig::default()
-    };
-    let _router = ChannelRouter::with_config(config);
 }
 
 // ── Neuromodulatory routing tests ─────────────────────────────────────────────
@@ -929,18 +897,15 @@ fn serde_restored_router_follows_the_same_ingress_rules() {
 
 #[test]
 fn rejection_does_not_self_heal_malformed_serde_state() {
-    let router = ChannelRouter::new();
-    let mut json = serde_json::to_value(&router).expect("fresh router must serialize");
-    json["baseline_weights"] = serde_json::json!([[], [], []]);
-    let mut router: ChannelRouter =
-        serde_json::from_value(json).expect("malformed payload should still deserialize");
+    let mut router = ChannelRouter::new();
+    router.channel_fatigue = vec![];
     let before = router_snapshot(&router);
-    assert!(before["baseline_weights"] == serde_json::json!([[], [], []]));
+    assert_eq!(before["channel_fatigue"], serde_json::json!([]));
 
     assert!(router.route([f32::NAN, 0.0, 0.0]).is_err());
     assert_eq!(
-        router_snapshot(&router)["baseline_weights"],
-        before["baseline_weights"],
+        router_snapshot(&router)["channel_fatigue"],
+        before["channel_fatigue"],
         "failed ingress must not run ensure_neuromod_state_synced"
     );
 
@@ -954,8 +919,8 @@ fn rejection_does_not_self_heal_malformed_serde_state() {
             .is_err()
     );
     assert_eq!(
-        router_snapshot(&router)["baseline_weights"],
-        before["baseline_weights"],
+        router_snapshot(&router)["channel_fatigue"],
+        before["channel_fatigue"],
         "failed modulated ingress must not run ensure_neuromod_state_synced"
     );
 }

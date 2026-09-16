@@ -158,7 +158,10 @@ pub use types::{
 };
 
 // Generic router exports (NeuromodNeuron is a router-internal NIF primitive; see "Crate boundary" above)
-pub use router::{ChannelRouter, NeuromodNeuron, NeuromodState, RouterConfig, RoutingDecision};
+pub use router::{
+    ChannelRouter, MAX_ROUTER_CHANNELS, MAX_ROUTING_TIMESTEPS, NeuromodNeuron, NeuromodState,
+    RouterConfig, RoutingDecision,
+};
 
 // Sparse map exports
 pub use sparse::{

@@ -8,10 +8,23 @@
 use std::fmt;
 
 /// Unified error type for synaptic-wiring operations.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum MeshError {
     /// A required parameter was out of range or invalid.
     InvalidConfig(String),
+
+    /// [`crate::RouterConfig`] or a [`crate::ChannelRouter`] checkpoint failed
+    /// validation.
+    ///
+    /// `field` is the config or state field that failed (`"leak"`,
+    /// `"neurons"`, `"baseline_weights"`, …) so constructor and serde paths
+    /// can be compared by category without parsing the reason string.
+    InvalidRouterConfig {
+        /// Config or checkpoint field that failed validation.
+        field: &'static str,
+        /// Why the value is rejected.
+        reason: String,
+    },
 
     /// Neuron count mismatch between components.
     NeuronCountMismatch {
@@ -45,10 +58,22 @@ pub enum MeshError {
     OutOfRangeNeuromodulator { field: &'static str, value: f32 },
 }
 
+impl MeshError {
+    pub(crate) fn invalid_router_config(field: &'static str, reason: impl Into<String>) -> Self {
+        Self::InvalidRouterConfig {
+            field,
+            reason: reason.into(),
+        }
+    }
+}
+
 impl fmt::Display for MeshError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             MeshError::InvalidConfig(msg) => write!(f, "invalid configuration: {msg}"),
+            MeshError::InvalidRouterConfig { field, reason } => {
+                write!(f, "invalid router config ({field}): {reason}")
+            }
             MeshError::NeuronCountMismatch {
                 expected,
                 got,

@@ -277,7 +277,7 @@ let config = RouterConfig {
     channel_count: 8,
     ..RouterConfig::default()
 };
-let mut router = ChannelRouter::with_config(config);
+let mut router = ChannelRouter::try_with_config(config).unwrap();
 let decision = router.route([0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0]).unwrap();
 
 assert_eq!(decision.active_channels, vec![3]);
