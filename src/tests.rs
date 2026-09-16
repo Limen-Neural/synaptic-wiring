@@ -825,13 +825,19 @@ fn each_neuromodulator_field_independently_rejected_when_out_of_range() {
 #[test]
 fn unit_interval_endpoints_and_signed_zero_are_accepted() {
     for value in [-0.0f32, 0.0, 1.0] {
-        NeuromodState {
+        let mods = NeuromodState {
             cortisol: value,
             dopamine: value,
             serotonin: value,
-        }
-        .validate()
-        .expect("documented [0, 1] endpoints must be accepted");
+        };
+        mods.validate()
+            .expect("documented [0, 1] endpoints must be accepted");
+
+        let mut router = ChannelRouter::new();
+        assert!(
+            router.route_modulated([0.5, 0.0, 0.0], &mods).is_ok(),
+            "route_modulated must accept endpoint value {value}"
+        );
     }
 }
 
@@ -936,6 +942,17 @@ fn rejection_does_not_self_heal_malformed_serde_state() {
         router_snapshot(&router)["baseline_weights"],
         before["baseline_weights"],
         "failed ingress must not run ensure_neuromod_state_synced"
+    );
+
+    let invalid_mods = NeuromodState {
+        dopamine: f32::NAN,
+        ..NeuromodState::balanced()
+    };
+    assert!(router.route_modulated([0.5, 0.0, 0.0], &invalid_mods).is_err());
+    assert_eq!(
+        router_snapshot(&router)["baseline_weights"],
+        before["baseline_weights"],
+        "failed modulated ingress must not run ensure_neuromod_state_synced"
     );
 }
 
