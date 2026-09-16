@@ -458,28 +458,82 @@ pub struct ChannelRouter {
     baseline_weights: Vec<Vec<f32>>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+enum LegacyField<T> {
+    #[default]
+    Omitted,
+    Null,
+    Value(T),
+}
+
+impl<'de, T: Deserialize<'de>> Deserialize<'de> for LegacyField<T> {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct LegacyFieldVisitor<T>(std::marker::PhantomData<T>);
+
+        impl<'de, T: Deserialize<'de>> serde::de::Visitor<'de> for LegacyFieldVisitor<T> {
+            type Value = LegacyField<T>;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a value or null")
+            }
+
+            fn visit_unit<E>(self) -> std::result::Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(LegacyField::Null)
+            }
+
+            fn visit_none<E>(self) -> std::result::Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(LegacyField::Null)
+            }
+
+            fn visit_some<D>(self, deserializer: D) -> std::result::Result<Self::Value, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                T::deserialize(deserializer).map(LegacyField::Value)
+            }
+        }
+
+        deserializer.deserialize_option(LegacyFieldVisitor(std::marker::PhantomData))
+    }
+}
+
 #[derive(Deserialize)]
 struct RawChannelRouter {
     neurons: Vec<NeuromodNeuron>,
     #[serde(default)]
-    config: Option<RouterConfig>,
+    config: LegacyField<RouterConfig>,
     #[serde(default)]
     total_routes: u64,
     #[serde(default)]
-    channel_fatigue: Option<Vec<f32>>,
+    channel_fatigue: LegacyField<Vec<f32>>,
     #[serde(default)]
-    baseline_weights: Option<Vec<Vec<f32>>>,
+    baseline_weights: LegacyField<Vec<Vec<f32>>>,
 }
 
 impl RawChannelRouter {
     fn into_router(self) -> Result<ChannelRouter> {
         let n_neurons = self.neurons.len();
         let config = match self.config {
-            Some(config) => config,
-            None => RouterConfig {
+            LegacyField::Omitted => RouterConfig {
                 channel_count: n_neurons,
                 ..RouterConfig::default()
             },
+            LegacyField::Null => {
+                return Err(MeshError::invalid_router_config(
+                    "config",
+                    "null value is not allowed; omit field for legacy format",
+                ));
+            }
+            LegacyField::Value(config) => config,
         };
         // Present configs were already validated by `RouterConfig`'s
         // `Deserialize`. Re-run the same path so a `Raw` built in tests, or a
@@ -489,12 +543,24 @@ impl RawChannelRouter {
         let n = config.channel_count;
         validate_neuron_bank(n, &self.neurons)?;
         let channel_fatigue = match self.channel_fatigue {
-            Some(fatigue) => fatigue,
-            None => vec![0.0; n],
+            LegacyField::Omitted => vec![0.0; n],
+            LegacyField::Null => {
+                return Err(MeshError::invalid_router_config(
+                    "channel_fatigue",
+                    "null value is not allowed; omit field for legacy format",
+                ));
+            }
+            LegacyField::Value(fatigue) => fatigue,
         };
         let baseline_weights = match self.baseline_weights {
-            Some(weights) => weights,
-            None => self.neurons.iter().map(|neu| neu.weights.clone()).collect(),
+            LegacyField::Omitted => self.neurons.iter().map(|neu| neu.weights.clone()).collect(),
+            LegacyField::Null => {
+                return Err(MeshError::invalid_router_config(
+                    "baseline_weights",
+                    "null value is not allowed; omit field for legacy format",
+                ));
+            }
+            LegacyField::Value(weights) => weights,
         };
         validate_fatigue_and_baseline(n, &channel_fatigue, &baseline_weights)?;
         Ok(ChannelRouter {
@@ -919,9 +985,31 @@ impl ChannelRouter {
                     let baseline = self.baseline_weights[i][j];
                     let current = self.neurons[i].weights[j];
                     // Move toward amplified baseline.
-                    let target = baseline * (1.0 + strengthen);
-                    self.neurons[i].weights[j] =
-                        (current + (target - current) * plasticity_speed).clamp(-1.5, 2.0);
+                    let next_weight = if plasticity_speed == 0.0 {
+                        current
+                    } else {
+                        let target = baseline * (1.0 + strengthen);
+                        let update = if !target.is_finite() {
+                            let extreme = if (baseline > 0.0 && strengthen >= -1.0)
+                                || (baseline < 0.0 && strengthen < -1.0)
+                            {
+                                2.0
+                            } else {
+                                -1.5
+                            };
+                            current + (extreme - current) * plasticity_speed
+                        } else {
+                            current + (target - current) * plasticity_speed
+                        };
+                        if update.is_finite() {
+                            update.clamp(-1.5, 2.0)
+                        } else if update.is_sign_positive() {
+                            2.0
+                        } else {
+                            -1.5
+                        }
+                    };
+                    self.neurons[i].weights[j] = next_weight;
                 }
                 self.channel_fatigue[i] = (self.channel_fatigue[i] + fatigue_acc).min(1.0);
             } else {
@@ -929,8 +1017,23 @@ impl ChannelRouter {
                 for j in 0..n {
                     let baseline = self.baseline_weights[i][j];
                     let current = self.neurons[i].weights[j];
-                    self.neurons[i].weights[j] =
-                        (current + (baseline - current) * decay).clamp(-1.5, 2.0);
+                    let update = if decay == 0.0 || current == baseline {
+                        current
+                    } else {
+                        let diff = baseline - current;
+                        if !diff.is_finite() {
+                            if baseline > current { 2.0 } else { -1.5 }
+                        } else {
+                            current + diff * decay
+                        }
+                    };
+                    self.neurons[i].weights[j] = if update.is_finite() {
+                        update.clamp(-1.5, 2.0)
+                    } else if update.is_sign_positive() {
+                        2.0
+                    } else {
+                        -1.5
+                    };
                 }
                 self.channel_fatigue[i] = (self.channel_fatigue[i] - fatigue_rec).max(0.0);
             }
@@ -1427,5 +1530,73 @@ mod validate_tests {
         };
         config.validate().unwrap();
         ChannelRouter::try_with_config(config).unwrap();
+    }
+
+    #[test]
+    fn explicit_null_fields_are_rejected() {
+        for field in ["config", "channel_fatigue", "baseline_weights"] {
+            let router = ChannelRouter::default();
+            let mut json = serde_json::to_value(&router).unwrap();
+            json[field] = serde_json::Value::Null;
+            let err = serde_json::from_value::<ChannelRouter>(json)
+                .expect_err("explicit null field must be rejected");
+            let msg = err.to_string();
+            assert!(
+                msg.contains(field),
+                "error should mention field {field}, got: {msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn extreme_weights_and_potentiate_with_zero_speed_do_not_produce_nan() {
+        let config = RouterConfig {
+            self_weight: 1.0,
+            cross_weight: -0.5,
+            plasticity_potentiate: f32::MAX,
+            plasticity_speed: 0.0,
+            ..RouterConfig::default()
+        };
+        config.validate().unwrap();
+        let mut router = ChannelRouter::try_with_config(config).unwrap();
+        let initial_weights = router.weight_matrix();
+        let res = router.route_modulated([1.0, 0.0, 0.0], &NeuromodState::balanced());
+        assert!(res.is_ok());
+        for (row_idx, row) in router.weight_matrix().iter().enumerate() {
+            for (col_idx, &w) in row.iter().enumerate() {
+                assert!(
+                    w.is_finite(),
+                    "weight at [{row_idx}][{col_idx}] must remain finite, got {w}"
+                );
+                assert_eq!(
+                    w, initial_weights[row_idx][col_idx],
+                    "weight with plasticity_speed 0.0 must remain unchanged"
+                );
+            }
+        }
+
+        // Also verify non-zero plasticity_speed with extreme potentiation clamps without NaN
+        let config_speed = RouterConfig {
+            self_weight: 1.0,
+            cross_weight: -0.5,
+            plasticity_potentiate: f32::MAX,
+            plasticity_speed: 0.5,
+            ..RouterConfig::default()
+        };
+        let mut router_speed = ChannelRouter::try_with_config(config_speed).unwrap();
+        let res_speed = router_speed.route_modulated([1.0, 0.0, 0.0], &NeuromodState::balanced());
+        assert!(res_speed.is_ok());
+        for (row_idx, row) in router_speed.weight_matrix().iter().enumerate() {
+            for (col_idx, &w) in row.iter().enumerate() {
+                assert!(
+                    w.is_finite(),
+                    "weight at [{row_idx}][{col_idx}] must remain finite, got {w}"
+                );
+                assert!(
+                    (-1.5..=2.0).contains(&w),
+                    "weight {w} at [{row_idx}][{col_idx}] must stay within [-1.5, 2.0]"
+                );
+            }
+        }
     }
 }
