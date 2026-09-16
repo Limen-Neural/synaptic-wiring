@@ -50,7 +50,10 @@ pub(crate) fn meshes_equivalent(
         if let (Some(l_obj), Some(r_obj)) = (live_snap.as_object(), restored_snap.as_object()) {
             for (k, v) in l_obj {
                 if r_obj.get(k) != Some(v) {
-                    diffs.push(format!("  field '{k}': live={v} != restored={:?}", r_obj.get(k)));
+                    diffs.push(format!(
+                        "  field '{k}': live={v} != restored={:?}",
+                        r_obj.get(k)
+                    ));
                 }
             }
             for k in r_obj.keys() {
