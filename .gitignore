@@ -23,5 +23,8 @@ junit.xml
 .ai/
 .junie/
 
+# External quality-tool caches (regenerable locally; must not dirty `cargo package`)
+.codacy/
+
 # Isolated Git Worktrees
 .worktrees/

@@ -55,9 +55,9 @@ jobs:
         run: |
           set -euo pipefail
           SHA="${{ github.sha }}"
-          echo "tags=synaptic-mesh:pr-${SHA}" >> "$GITHUB_OUTPUT"
-          echo "verify_tag=synaptic-mesh:pr-${SHA}" >> "$GITHUB_OUTPUT"
-          echo "builder_tag=synaptic-mesh:builder-pr-${SHA}" >> "$GITHUB_OUTPUT"
+          echo "tags=synaptic-wiring:pr-${SHA}" >> "$GITHUB_OUTPUT"
+          echo "verify_tag=synaptic-wiring:pr-${SHA}" >> "$GITHUB_OUTPUT"
+          echo "builder_tag=synaptic-wiring:builder-pr-${SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Build runtime image (load locally)
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
@@ -79,11 +79,11 @@ jobs:
           test -n "${expected}"
           test "${actual}" = "${expected}"
           docker run --rm --entrypoint test "${{ steps.image.outputs.verify_tag }}" \
-            -f /usr/share/doc/synaptic-mesh/synaptic_wiring/index.html
+            -f /usr/share/doc/synaptic-wiring/synaptic_wiring/index.html
           docker run --rm --entrypoint test "${{ steps.image.outputs.verify_tag }}" \
-            -s /usr/share/synaptic-mesh/VERSION
+            -s /usr/share/synaptic-wiring/VERSION
           docker run --rm --entrypoint ls "${{ steps.image.outputs.verify_tag }}" \
-            -la /usr/share/synaptic-mesh /usr/share/doc/synaptic-mesh/synaptic_wiring
+            -la /usr/share/synaptic-wiring /usr/share/doc/synaptic-wiring/synaptic_wiring
 
       - name: Build builder stage
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
@@ -172,11 +172,11 @@ jobs:
             echo "::error::Failed to extract a Cargo version from Cargo.toml (got: ${VER:-empty})"
             exit 1
           fi
-          GHCR="ghcr.io/limen-neural/synaptic-mesh"
+          GHCR="ghcr.io/limen-neural/synaptic-wiring"
           # Always publish immutable commit SHA (main or tag push).
           TAGS="${GHCR}:${SHA}"
           if [ "${HUB_ENABLED}" = "true" ] && [ -n "${HUB_USER}" ]; then
-            TAGS="${TAGS},${HUB_USER}/synaptic-mesh:${SHA}"
+            TAGS="${TAGS},${HUB_USER}/synaptic-wiring:${SHA}"
           fi
           # Version + latest only on release tags whose name matches Cargo.toml
           # and whose commit is already on origin/main (reviewed). A matching
@@ -200,7 +200,7 @@ jobs:
             else
               TAGS="${TAGS},${GHCR}:${VER},${GHCR}:latest"
               if [ "${HUB_ENABLED}" = "true" ] && [ -n "${HUB_USER}" ]; then
-                TAGS="${TAGS},${HUB_USER}/synaptic-mesh:${VER},${HUB_USER}/synaptic-mesh:latest"
+                TAGS="${TAGS},${HUB_USER}/synaptic-wiring:${VER},${HUB_USER}/synaptic-wiring:latest"
               fi
             fi
           fi

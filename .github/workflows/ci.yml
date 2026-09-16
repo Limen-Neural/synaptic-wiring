@@ -194,6 +194,17 @@ jobs:
       - name: Package the crate
         run: cargo package --locked
 
+      # Exact registry dry-run against the built artifact. No token is
+      # needed; nothing is uploaded.
+      - name: Publish dry-run (no upload)
+        run: cargo publish --locked --dry-run
+
+      # The crate defines no features, so this trivially passes — it pins
+      # the independently-consumable shape (no default-gated native-only
+      # dependency may sneak in later without failing here).
+      - name: Check with no default features
+        run: cargo check --locked --no-default-features
+
       # Build the packaged .crate outside the repository, so a source file
       # dropped by `exclude` (or a build that silently relies on a repo-only
       # file such as rust-toolchain.toml) fails here instead of on crates.io.

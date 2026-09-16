@@ -6,7 +6,7 @@ edition = "2024"
 # workflow `toolchain:` pins (see REVIEW.md "MSRV pin rule").
 rust-version = "1.98.1"
 license = "MIT OR Apache-2.0"
-description = "An SNN-based mesh for managing the wiring, topology, and temporal delays between neurons."
+description = "SNN wiring, topology, temporal delays, sparse connectivity, and routing infrastructure for neuromorphic computing."
 authors = ["Raul Cardenas Montoya <montoyaraul34@gmail.com>"]
 repository = "https://github.com/Limen-Neural/synaptic-wiring"
 documentation = "https://docs.rs/synaptic-wiring"

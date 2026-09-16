@@ -77,7 +77,8 @@ synaptic-wiring = "0.3"
 releases may still contain breaking changes until 1.0. Pin an exact version
 (`= "0.3.0"`) if you need stability.
 
-For bleeding-edge changes that are not in a release yet, depend on git instead:
+For Development / unreleased main — changes that are not in a release yet —
+depend on git instead:
 
 ```toml
 synaptic-wiring = { git = "https://github.com/Limen-Neural/synaptic-wiring" }
@@ -103,18 +104,18 @@ still creates a new package as private until an org owner sets visibility
 to public under [GitHub Packages](https://github.com/orgs/Limen-Neural/packages).
 
 ```bash
-docker pull ghcr.io/limen-neural/synaptic-mesh:0.3.0
-docker run --rm ghcr.io/limen-neural/synaptic-mesh:0.3.0
+docker pull ghcr.io/limen-neural/synaptic-wiring:0.3.0
+docker run --rm ghcr.io/limen-neural/synaptic-wiring:0.3.0
 ```
 
 Build locally from a git checkout:
 
 ```bash
-docker build -t synaptic-mesh:dev .
-docker run --rm synaptic-mesh:dev
+docker build -t synaptic-wiring:dev .
+docker run --rm synaptic-wiring:dev
 
-docker build --target builder -t synaptic-mesh:builder .
-docker run --rm synaptic-mesh:builder   # cargo test --all-features --locked
+docker build --target builder -t synaptic-wiring:builder .
+docker run --rm synaptic-wiring:builder   # cargo test --all-features --locked
 ```
 
 ## Quick Start: Building a Mesh

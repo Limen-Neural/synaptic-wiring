@@ -1,4 +1,4 @@
-# Multi-stage Docker for synaptic-mesh (library crate; no binaries / examples).
+# Multi-stage Docker for synaptic-wiring (library crate; no binaries / examples).
 # Keep `rust:1.98.1` in sync with Cargo.toml rust-version / rust-toolchain.toml
 # / CI toolchain pin (see REVIEW.md "MSRV pin rule").
 #
@@ -7,13 +7,13 @@
 # binary. The published image is a rustdoc snapshot plus a version stamp so
 # releases can ship a GHCR package. Library consumers should depend on crates.io.
 #
-# Runtime (default): rustdoc under /usr/share/doc/synaptic-mesh + VERSION
-#   docker build -t synaptic-mesh:dev .
-#   docker run --rm synaptic-mesh:dev
+# Runtime (default): rustdoc under /usr/share/doc/synaptic-wiring + VERSION
+#   docker build -t synaptic-wiring:dev .
+#   docker run --rm synaptic-wiring:dev
 #
 # Builder (tests / full toolchain):
-#   docker build --target builder -t synaptic-mesh:builder .
-#   docker run --rm synaptic-mesh:builder   # re-runs cargo test (CMD)
+#   docker build --target builder -t synaptic-wiring:builder .
+#   docker run --rm synaptic-wiring:builder   # re-runs cargo test (CMD)
 
 FROM rust:1.98.1-slim-bookworm AS builder
 
@@ -58,17 +58,17 @@ CMD ["cargo", "test", "--all-features", "--locked"]
 FROM debian:bookworm-slim
 
 RUN useradd --system --create-home --uid 10001 --shell /usr/sbin/nologin mesh \
-    && mkdir -p /usr/share/synaptic-mesh /usr/share/doc/synaptic-mesh
+    && mkdir -p /usr/share/synaptic-wiring /usr/share/doc/synaptic-wiring
 
-COPY --from=builder /app/out/VERSION /usr/share/synaptic-mesh/VERSION
-COPY --from=builder /app/target/doc /usr/share/doc/synaptic-mesh
+COPY --from=builder /app/out/VERSION /usr/share/synaptic-wiring/VERSION
+COPY --from=builder /app/target/doc /usr/share/doc/synaptic-wiring
 
-LABEL org.opencontainers.image.title="synaptic-mesh" \
+LABEL org.opencontainers.image.title="synaptic-wiring" \
       org.opencontainers.image.description="SNN wiring / topology / delay library (docs snapshot; depend on crates.io for the crate)" \
-      org.opencontainers.image.source="https://github.com/Limen-Neural/synaptic-mesh" \
+      org.opencontainers.image.source="https://github.com/Limen-Neural/synaptic-wiring" \
       org.opencontainers.image.licenses="MIT OR Apache-2.0"
 
 USER mesh
 WORKDIR /home/mesh
 
-CMD ["cat", "/usr/share/synaptic-mesh/VERSION"]
+CMD ["cat", "/usr/share/synaptic-wiring/VERSION"]
