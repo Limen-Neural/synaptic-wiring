@@ -1,0 +1,11 @@
+src/error.rs
+  07ee24bd1a9e139b 11
+src/router.rs
+  07ee24bd1a9e139b 858
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "3c45e8d9f75bad1e4d936c1a0314a7e683e87b11",
+  "prompts": {}
+}
