@@ -60,7 +60,7 @@ pub(crate) fn meshes_equivalent(
             }
         }
         let diff_summary = if diffs.is_empty() {
-            String::new()
+            String::default()
         } else {
             format!("\ndiffering fields:\n{}", diffs.join("\n"))
         };
