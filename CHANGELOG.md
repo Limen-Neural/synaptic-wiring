@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Crate rename**: the Cargo package is now `synaptic-wiring` (was
+  `synaptic-mesh`) so the first crates.io publish does not collide with
+  [ruvnet/Synaptic-Mesh](https://github.com/ruvnet/Synaptic-Mesh). GitHub
+  URLs point at [`Limen-Neural/synaptic-wiring`](https://github.com/Limen-Neural/synaptic-wiring)
+  (the GitHub repository rename has landed; the old `synaptic-mesh` path
+  redirects). The `SynapticMesh` type is unchanged.
+
 ### Added
 
 - **Topology digest**: `SynapticGraph::topology_digest` / `SynapticMesh::topology_digest`
@@ -26,6 +35,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a caller-owned buffer; the allocating drain is a wrapper around it.
 - **Benches**: Criterion cases for 16 / 256 / 4096 neurons with short and
   long delays, comparing allocating vs caller-buffer propagation.
+- **Tests**: `tests/checkpoint_resume/` — seeded property/fuzz coverage that a
+  restored `SynapticMesh` continues tick-for-tick identically to the live mesh
+  with spikes in flight (currents, tick, queued deliveries). Covers generated
+  graphs, signed weights, empty ticks, max-delay capacity, checkpoint-before-
+  delivery, JSON plus postcard restore, persisted regression seeds, and a
+  documented ignored nightly profile (`CHECKPOINT_RESUME_CASES`).
+  Invalid checkpoints stay rejected by the existing load-path tests rather
+  than being normalized here (LIM-1223).
 - **Packaging**: Docker + GHCR container for releases (`ghcr.io/limen-neural/synaptic-mesh`).
   Library crate (no `examples/` / `[[bin]]`), so the image is a rustdoc snapshot
   plus a version stamp rather than a fake binary. PR workflow verifies without

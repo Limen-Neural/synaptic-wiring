@@ -630,6 +630,9 @@ mod tests {
         );
     }
 
+    /// Narrow in-flight regression. Generated graphs, checkpoint locations,
+    /// JSON/postcard restore, and the nightly profile live in
+    /// `tests/checkpoint_resume/` (LIM-1223).
     #[test]
     fn checkpoint_resume_with_spikes_in_flight_matches_live() {
         let mut live = SynapticMesh::new(two_neuron_delay_graph(2));

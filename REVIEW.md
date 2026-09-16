@@ -75,6 +75,22 @@ cargo test --locked
 cargo clippy --all-features -- -D warnings
 ```
 
+### Checkpoint resume property suite (LIM-1223)
+
+Default CI already runs this via `cargo test --locked`. The bounded profile is
+`tests/checkpoint_resume/`: 512 seeded cases plus named boundary/regression
+fixtures, restoring through JSON and postcard.
+
+For a longer ignored/nightly run (10_000 additional seeds by default):
+
+```bash
+cargo test --locked --test checkpoint_resume resume_equivalence_nightly -- --ignored
+CHECKPOINT_RESUME_CASES=50000 cargo test --locked --test checkpoint_resume resume_equivalence_nightly -- --ignored
+```
+
+Persist a failing seed in `REGRESSION_SEEDS`. If the on-failure shrinker prints
+a smaller scenario, add that as a named fixture next to the other boundary tests.
+
 ## Regression guards
 
 After any "security" or dependency PR, confirm core product APIs still exist:
