@@ -422,6 +422,16 @@ impl SynapticMesh {
             }
         }
 
+        for target in 0..n {
+            let current = self.delay_buffer.scheduled_current(target, 0);
+            if !current.is_finite() {
+                self.pending_scratch.clear();
+                return Err(MeshError::InvalidConfig(format!(
+                    "propagate_graded would produce a non-finite delay-buffer total for target {target}"
+                )));
+            }
+        }
+
         for (target, delay, additional) in self.pending_scratch.iter().copied() {
             self.delay_buffer.inject(target, additional, delay);
         }
@@ -1184,5 +1194,24 @@ mod tests {
         let restored: SynapticMesh = serde_json::from_value(value).unwrap();
         assert_eq!(restored.neuron_count(), 2);
         assert_eq!(restored.tick(), 0);
+    }
+
+    #[test]
+    fn propagate_graded_into_rejects_non_finite_current_in_delay_buffer_with_empty_scratch() {
+        let mut mesh = SynapticMesh::new(two_neuron_delay_graph(0));
+        mesh.delay_buffer.inject(0, f32::NAN, 0);
+        let tick = mesh.tick();
+        let mut sentinel = [42.0_f32, 42.0];
+
+        let err = mesh
+            .propagate_graded_into(&[0.0, 0.0], &mut sentinel)
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("non-finite delay-buffer total"),
+            "unexpected error: {err}"
+        );
+        assert_eq!(mesh.tick(), tick);
+        assert_eq!(sentinel, [42.0, 42.0]);
+        assert!(mesh.delay_buffer.scheduled_current(0, 0).is_nan());
     }
 }
