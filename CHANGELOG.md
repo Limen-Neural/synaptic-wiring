@@ -52,14 +52,6 @@ general SNN users depending on the crate without any Limen context.
   documented ignored nightly profile (`CHECKPOINT_RESUME_CASES`).
   Invalid checkpoints stay rejected by the existing load-path tests rather
   than being normalized here (LIM-1223).
-- **Packaging**: Docker + GHCR container for releases (`ghcr.io/limen-neural/synaptic-wiring`).
-  Library crate (no `examples/` / `[[bin]]`), so the image is a rustdoc snapshot
-  plus a version stamp rather than a fake binary. PR workflow verifies without
-  pushing; `main` publishes SHA tags; `v*` tags also publish version + `latest`
-  when the tag matches `Cargo.toml` (including prerelease) and the tagged
-  commit is already on `main`. Anonymous GHCR pulls need the package set
-  public in GitHub Packages (`packages: write` only pushes).
-  (issue #78 / LIM-1178).
 - **CI**: Codecov coverage workflow (`.github/workflows/coverage.yml`)
   uploads LCOV from `cargo llvm-cov nextest` on PRs and `main`.
   The MSRV pin-agreement check now also requires `coverage.yml`
@@ -148,10 +140,6 @@ general SNN users depending on the crate without any Limen context.
   `[0, 1]` are rejected (`MeshError::OutOfRangeNeuromodulator`) rather than
   silently clamped. Finite signed signals keep their existing weighted-sum
   behavior. (LIM-1229)
-- **Packaging**: Docker rustdoc snapshot path matches the `synaptic-wiring`
-  crate name (`target/doc/synaptic_wiring/`) after the rename
-  (LIM-1219 / leftover from LIM-1178).
-
 ### Removed
 
 - **CI**: the Qodana workflow (`.github/workflows/qodana_code_quality.yml`)
