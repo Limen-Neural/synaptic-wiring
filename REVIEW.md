@@ -7,17 +7,17 @@ Run them before claiming a PR is ready when the change touches `src/`,
 ## MSRV pin rule
 
 `Cargo.toml` `rust-version`, `rust-toolchain.toml` `channel`, the README's
-**MSRV** line, the Dockerfile `FROM rust:X.Y.Z` tag, every `toolchain:` /
+**MSRV** line, every `toolchain:` /
 `rust-version:` pin in `.github/workflows/ci.yml` (the toolchain install,
 the packaging job, and the `cargo-deny` action) and
 `.github/workflows/coverage.yml` must stay **identical** (currently
 **1.98.1**). The `validate` job in `ci.yml` reads those workflow pins and
-the Dockerfile rust tag and fails if they drift (issue #35 / LIM-1042).
+fails if they drift (issue #35 / LIM-1042).
 
 To bump MSRV:
 
 1. Set the new version in Cargo.toml, rust-toolchain.toml, README.md,
-   Dockerfile, ci.yml, and coverage.yml.
+   ci.yml, and coverage.yml.
 2. Run the mandatory commands below on that toolchain
    (`rustup run <ver> cargo test --locked`, etc.).
 3. Confirm GitHub Actions is green.

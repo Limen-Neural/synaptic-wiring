@@ -92,32 +92,6 @@ Contributors: see
 [REVIEW.md](https://github.com/Limen-Neural/synaptic-wiring/blob/main/REVIEW.md#build-profiles)
 for which cargo build profile (`dev`, `test`, `release`, `bench`) to use and why.
 
-## Docker (optional)
-
-Published images are a **docs snapshot** for release packaging (not a
-substitute for depending on the crate from Cargo). This crate has no
-example binaries.
-
-Anonymous `docker pull` works only after the GHCR package is **public**.
-The publish workflow has `packages: write` so it can push images; GitHub
-still creates a new package as private until an org owner sets visibility
-to public under [GitHub Packages](https://github.com/orgs/Limen-Neural/packages).
-
-```bash
-docker pull ghcr.io/limen-neural/synaptic-wiring:0.3.0
-docker run --rm ghcr.io/limen-neural/synaptic-wiring:0.3.0
-```
-
-Build locally from a git checkout:
-
-```bash
-docker build -t synaptic-wiring:dev .
-docker run --rm synaptic-wiring:dev
-
-docker build --target builder -t synaptic-wiring:builder .
-docker run --rm synaptic-wiring:builder   # cargo test --all-features --locked
-```
-
 ## Quick Start: Building a Mesh
 
 ```rust

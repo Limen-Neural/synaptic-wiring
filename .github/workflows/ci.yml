@@ -64,21 +64,12 @@ jobs:
             echo "ERROR: no 'MSRV ... <version>' line found in README.md" >&2
             exit 1
           fi
-          # Dockerfile rust:X.Y.Z must match too (REVIEW.md MSRV pin rule).
-          dockerfile_pin=$(grep -E '^FROM rust:[0-9]+\.[0-9]+\.[0-9]+' Dockerfile \
-            | head -1 | sed -E 's/^FROM rust:([0-9]+\.[0-9]+\.[0-9]+).*/\1/' | strip_cr || true)
-          if [ -z "$dockerfile_pin" ]; then
-            echo "ERROR: no FROM rust:X.Y.Z line found in Dockerfile" >&2
-            exit 1
-          fi
           echo "Cargo.toml rust-version=$cargo_rv"
           echo "rust-toolchain.toml channel=$toolchain_ch"
           echo "README.md MSRV=$readme_rv"
-          echo "Dockerfile FROM rust=$dockerfile_pin"
           agree=0
           [ "$cargo_rv" = "$toolchain_ch" ] || agree=1
           [ "$cargo_rv" = "$readme_rv" ] || agree=1
-          [ "$cargo_rv" = "$dockerfile_pin" ] || agree=1
           while read -r pin; do
             [ "$pin" = "$cargo_rv" ] || agree=1
           done <<< "$workflow_pins"
