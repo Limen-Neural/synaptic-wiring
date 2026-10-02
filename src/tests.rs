@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 use crate::error::MeshError;
-use crate::router::{ChannelRouter, NeuromodNeuron, NeuromodState, RouterConfig};
+use crate::router::{ChannelRouter, NeuromodNeuron, NeuromodState, RouterConfig, RoutingDecision};
 
 #[test]
 fn channel_0_pulse_activates_channel_0() {
@@ -668,6 +668,28 @@ fn neuromod_with_field(field: &str, value: f32) -> NeuromodState {
     mods
 }
 
+fn assert_named_mesh_error(err: MeshError, expected_field: &str, display_must_contain: &[&str]) {
+    let msg = format!("{err}");
+    let field = match &err {
+        MeshError::NonFiniteNeuromodulator { field } => *field,
+        MeshError::OutOfRangeNeuromodulator { field, .. } => *field,
+        other => panic!("expected a named neuromodulator error, got {other}"),
+    };
+    assert_eq!(field, expected_field);
+    for needle in display_must_contain {
+        assert!(
+            msg.contains(needle),
+            "Display must contain {needle}, got: {msg}"
+        );
+    }
+}
+
+fn assert_route_matches(left: &RoutingDecision, right: &RoutingDecision) {
+    assert_eq!(left.active_channels, right.active_channels);
+    assert_eq!(left.firing_rates, right.firing_rates);
+    assert_eq!(left.input_signals, right.input_signals);
+}
+
 fn assert_non_finite_signal(err: MeshError, expected_index: usize, expected_context: &str) {
     let msg = format!("{err}");
     match err {
@@ -736,17 +758,7 @@ fn each_neuromodulator_field_independently_rejected_when_non_finite() {
             let err = router
                 .route_modulated([0.5, 0.0, 0.0], &neuromod_with_field(field, bad))
                 .unwrap_err();
-            let msg = format!("{err}");
-            match err {
-                MeshError::NonFiniteNeuromodulator { field: got } => {
-                    assert_eq!(got, field);
-                    assert!(
-                        msg.contains(field),
-                        "Display must name the field, got: {msg}"
-                    );
-                }
-                other => panic!("expected NonFiniteNeuromodulator for {field}, got {other}"),
-            }
+            assert_named_mesh_error(err, field, &[field]);
             assert_internal_state_eq(&router, &before);
         }
     }
@@ -757,21 +769,15 @@ fn each_neuromodulator_field_independently_rejected_when_out_of_range() {
     for field in NEUROMOD_FIELDS {
         for value in [-0.1f32, 1.01, 2.0, -1.0] {
             let err = neuromod_with_field(field, value).validate().unwrap_err();
-            let msg = format!("{err}");
-            match err {
+            match &err {
                 MeshError::OutOfRangeNeuromodulator {
-                    field: got,
-                    value: got_value,
+                    value: got_value, ..
                 } => {
-                    assert_eq!(got, field);
-                    assert_eq!(got_value, value);
-                    assert!(
-                        msg.contains(field) && msg.contains("[0, 1]"),
-                        "Display must name field and range, got: {msg}"
-                    );
+                    assert_eq!(*got_value, value);
                 }
                 other => panic!("expected OutOfRangeNeuromodulator for {field}, got {other}"),
             }
+            assert_named_mesh_error(err, field, &[field, "[0, 1]"]);
 
             let mut router = ChannelRouter::new();
             let before = router.clone();
@@ -849,16 +855,13 @@ fn valid_call_after_rejection_matches_untouched_control() {
 
     let d_rej = rejected.route([0.8, 0.1, 0.0]).unwrap();
     let d_ctl = control.route([0.8, 0.1, 0.0]).unwrap();
-    assert_eq!(d_rej.active_channels, d_ctl.active_channels);
-    assert_eq!(d_rej.firing_rates, d_ctl.firing_rates);
-    assert_eq!(d_rej.input_signals, d_ctl.input_signals);
+    assert_route_matches(&d_rej, &d_ctl);
     assert_internal_state_eq(&rejected, &control);
 
     let mods = NeuromodState::rewarded();
     let d_rej = rejected.route_modulated([0.4, 0.0, 0.2], &mods).unwrap();
     let d_ctl = control.route_modulated([0.4, 0.0, 0.2], &mods).unwrap();
-    assert_eq!(d_rej.active_channels, d_ctl.active_channels);
-    assert_eq!(d_rej.firing_rates, d_ctl.firing_rates);
+    assert_route_matches(&d_rej, &d_ctl);
     assert_internal_state_eq(&rejected, &control);
 }
 
@@ -883,10 +886,7 @@ fn serde_restored_router_follows_the_same_ingress_rules() {
             },
         )
         .unwrap_err();
-    match err {
-        MeshError::NonFiniteNeuromodulator { field } => assert_eq!(field, "serotonin"),
-        other => panic!("expected NonFiniteNeuromodulator, got {other}"),
-    }
+    assert_named_mesh_error(err, "serotonin", &["serotonin"]);
     assert_internal_state_eq(&restored, &before);
 
     restored.route([1.0, 0.0, 0.0]).unwrap();
