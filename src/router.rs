@@ -37,6 +37,25 @@ pub const MAX_ROUTER_CHANNELS: usize = 1024;
 /// values that would hang a restore/route on untrusted input.
 pub const MAX_ROUTING_TIMESTEPS: usize = 4096;
 
+/// Weighted synaptic current presented to [`NeuromodNeuron::integrate`].
+#[derive(Clone, Copy, Debug)]
+pub struct SynapticDrive {
+    /// Incoming stimulus, already weighted by the caller.
+    pub stimulus: f32,
+}
+
+/// Neuromodulatory gain written by [`NeuromodNeuron::set_gain`] and
+/// [`ChannelRouter::set_global_gain`].
+#[derive(Clone, Copy, Debug)]
+pub struct ModulationGain {
+    /// Gain multiplier. `1.0` leaves the stimulus unchanged.
+    pub value: f32,
+}
+
+/// Index of one router channel, used by [`RoutingDecision::is_active`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ChannelIndex(pub usize);
+
 /// Neuromodulatory Integrative Fixed-threshold (NIF) neuron.
 ///
 /// This is a **router-internal integration primitive** for [`ChannelRouter`],
@@ -93,9 +112,9 @@ impl NeuromodNeuron {
     /// Advance neuron dynamics by one timestep.
     ///
     /// The `stimulus` is scaled by the neuron's current `gain`.
-    pub fn integrate(&mut self, stimulus: f32) {
+    pub fn integrate(&mut self, drive: SynapticDrive) {
         // Apply modulated integration
-        self.v += stimulus * self.gain;
+        self.v += drive.stimulus * self.gain;
         // Apply leak towards resting potential
         self.v -= (self.v - self.v_rest) * self.leak;
     }
@@ -113,8 +132,8 @@ impl NeuromodNeuron {
     }
 
     /// Update the modulation gain.
-    pub fn set_gain(&mut self, new_gain: f32) {
-        self.gain = new_gain;
+    pub fn set_gain(&mut self, gain: ModulationGain) {
+        self.gain = gain.value;
     }
 }
 
@@ -310,52 +329,102 @@ impl RouterConfig {
                 ),
             ));
         }
-        require_finite("self_weight", self.self_weight)?;
-        require_finite("cross_weight", self.cross_weight)?;
-        require_finite("threshold", self.threshold)?;
-        require_unit_interval("leak", self.leak)?;
-        require_unit_interval("min_fire_rate", self.min_fire_rate)?;
-        require_unit_interval("plasticity_decay", self.plasticity_decay)?;
-        require_non_negative("plasticity_potentiate", self.plasticity_potentiate)?;
-        require_unit_interval("plasticity_speed", self.plasticity_speed)?;
-        require_unit_interval("fatigue_accumulation", self.fatigue_accumulation)?;
-        require_unit_interval("fatigue_recovery", self.fatigue_recovery)?;
+        ConfigScalar {
+            field: "self_weight",
+            value: self.self_weight,
+        }
+        .require_finite()?;
+        ConfigScalar {
+            field: "cross_weight",
+            value: self.cross_weight,
+        }
+        .require_finite()?;
+        ConfigScalar {
+            field: "threshold",
+            value: self.threshold,
+        }
+        .require_finite()?;
+        ConfigScalar {
+            field: "leak",
+            value: self.leak,
+        }
+        .require_unit_interval()?;
+        ConfigScalar {
+            field: "min_fire_rate",
+            value: self.min_fire_rate,
+        }
+        .require_unit_interval()?;
+        ConfigScalar {
+            field: "plasticity_decay",
+            value: self.plasticity_decay,
+        }
+        .require_unit_interval()?;
+        ConfigScalar {
+            field: "plasticity_potentiate",
+            value: self.plasticity_potentiate,
+        }
+        .require_non_negative()?;
+        ConfigScalar {
+            field: "plasticity_speed",
+            value: self.plasticity_speed,
+        }
+        .require_unit_interval()?;
+        ConfigScalar {
+            field: "fatigue_accumulation",
+            value: self.fatigue_accumulation,
+        }
+        .require_unit_interval()?;
+        ConfigScalar {
+            field: "fatigue_recovery",
+            value: self.fatigue_recovery,
+        }
+        .require_unit_interval()?;
         Ok(())
     }
 }
 
-fn require_finite(field: &'static str, value: f32) -> Result<()> {
-    if value.is_finite() {
-        Ok(())
-    } else {
-        Err(MeshError::invalid_router_config(
-            field,
-            format!("must be finite, got {value}"),
-        ))
-    }
+/// A named config scalar and the constraint it must satisfy before a router
+/// is constructed or restored.
+#[derive(Clone, Copy, Debug)]
+struct ConfigScalar {
+    field: &'static str,
+    value: f32,
 }
 
-fn require_unit_interval(field: &'static str, value: f32) -> Result<()> {
-    require_finite(field, value)?;
-    if (0.0..=1.0).contains(&value) {
-        Ok(())
-    } else {
-        Err(MeshError::invalid_router_config(
-            field,
-            format!("must be finite and in 0.0..=1.0, got {value}"),
-        ))
+impl ConfigScalar {
+    fn require_finite(self) -> Result<()> {
+        if self.value.is_finite() {
+            Ok(())
+        } else {
+            Err(MeshError::invalid_router_config(
+                self.field,
+                format!("must be finite, got {}", self.value),
+            ))
+        }
     }
-}
 
-fn require_non_negative(field: &'static str, value: f32) -> Result<()> {
-    require_finite(field, value)?;
-    if value >= 0.0 {
-        Ok(())
-    } else {
-        Err(MeshError::invalid_router_config(
-            field,
-            format!("must be finite and >= 0, got {value}"),
-        ))
+    fn require_unit_interval(self) -> Result<()> {
+        self.require_finite()?;
+        if (0.0..=1.0).contains(&self.value) {
+            Ok(())
+        } else {
+            Err(MeshError::invalid_router_config(
+                self.field,
+                format!("must be finite and in 0.0..=1.0, got {}", self.value),
+            ))
+        }
+    }
+
+    fn require_non_negative(self) -> Result<()> {
+        self.require_finite()?;
+        if self.value >= 0.0 {
+            Ok(())
+        } else {
+            Err(MeshError::invalid_router_config(
+                self.field,
+                format!("must be finite and >= 0, got {}", self.value),
+            ))
+        }
     }
 }
 
@@ -451,8 +520,8 @@ pub struct RoutingDecision {
 }
 
 impl RoutingDecision {
-    pub fn is_active(&self, channel: usize) -> bool {
-        self.active_channels.contains(&channel)
+    pub fn is_active(&self, channel: ChannelIndex) -> bool {
+        self.active_channels.contains(&channel.0)
     }
 
     /// True when no channel was activated.
@@ -464,14 +533,6 @@ impl RoutingDecision {
 /// Shared ingress checks for [`ChannelRouter::route`] and
 /// [`ChannelRouter::route_modulated`]. Length, signal finiteness, and
 /// neuromodulator validity are all decided before any router field changes.
-fn weighted_stimulus(signals: &[f32], weights: &[f32]) -> f32 {
-    signals
-        .iter()
-        .zip(weights.iter())
-        .map(|(sig, w)| sig * w)
-        .sum()
-}
-
 fn validate_route_ingress(
     signals: &[f32],
     mods: &NeuromodState,
@@ -592,7 +653,11 @@ struct RawChannelRouter {
 impl RawChannelRouter {
     fn into_router(self) -> Result<ChannelRouter> {
         let n_neurons = self.neurons.len();
-        let config = legacy_config(self.config, n_neurons)?;
+        let config = LegacyConfig {
+            field: self.config,
+            n_neurons,
+        }
+        .resolve()?;
         // Present configs were already validated by `RouterConfig`'s
         // `Deserialize`. Re-run the same path so a `Raw` built in tests, or a
         // future constructor that skips serde, cannot bypass it.
@@ -615,20 +680,26 @@ impl RawChannelRouter {
     }
 }
 
-/// Neuron bank must be length `n`, each row length `n`, with finite
-/// membrane / gain / weight parameters. Called before cloning a missing
-/// baseline table so malformed snapshots cannot double peak memory.
-fn legacy_config(field: LegacyField<RouterConfig>, n_neurons: usize) -> Result<RouterConfig> {
-    match field {
-        LegacyField::Omitted => Ok(RouterConfig {
-            channel_count: n_neurons,
-            ..RouterConfig::default()
-        }),
-        LegacyField::Null => Err(MeshError::invalid_router_config(
-            "config",
-            "null value is not allowed; omit field for legacy format",
-        )),
-        LegacyField::Value(config) => Ok(config),
+/// A legacy `config` field plus the neuron-bank length used when it was omitted.
+#[derive(Clone, Debug)]
+struct LegacyConfig {
+    field: LegacyField<RouterConfig>,
+    n_neurons: usize,
+}
+
+impl LegacyConfig {
+    fn resolve(self) -> Result<RouterConfig> {
+        match self.field {
+            LegacyField::Omitted => Ok(RouterConfig {
+                channel_count: self.n_neurons,
+                ..RouterConfig::default()
+            }),
+            LegacyField::Null => Err(MeshError::invalid_router_config(
+                "config",
+                "null value is not allowed; omit field for legacy format",
+            )),
+            LegacyField::Value(config) => Ok(config),
+        }
     }
 }
 
@@ -645,6 +716,9 @@ fn reject_null<T>(field: &'static str, value: LegacyField<T>) -> Result<Option<T
     }
 }
 
+/// Neuron bank must be length `n`, each row length `n`, with finite
+/// membrane / gain / weight parameters. Called before cloning a missing
+/// baseline table so malformed snapshots cannot double peak memory.
 fn validate_neuron_bank(n: usize, neurons: &[NeuromodNeuron]) -> Result<()> {
     if neurons.len() != n {
         return Err(MeshError::invalid_router_config(
@@ -673,6 +747,30 @@ fn validate_neuron_bank(n: usize, neurons: &[NeuromodNeuron]) -> Result<()> {
     Ok(())
 }
 
+/// A neuron-bank scalar (`v`, `leak`, `gain`, …) that must be finite.
+#[derive(Clone, Copy, Debug)]
+struct NeuronScalar {
+    neuron: usize,
+    field: &'static str,
+    value: f32,
+}
+
+impl NeuronScalar {
+    fn require_finite(self) -> Result<()> {
+        if self.value.is_finite() {
+            Ok(())
+        } else {
+            Err(MeshError::invalid_router_config(
+                self.field,
+                format!(
+                    "neuron {} {} must be finite, got {}",
+                    self.neuron, self.field, self.value
+                ),
+            ))
+        }
+    }
+}
+
 fn require_finite_neuron_params(neuron: usize, neu: &NeuromodNeuron) -> Result<()> {
     for (field, value) in [
         ("v", neu.v),
@@ -682,20 +780,14 @@ fn require_finite_neuron_params(neuron: usize, neu: &NeuromodNeuron) -> Result<(
         ("threshold", neu.threshold),
         ("gain", neu.gain),
     ] {
-        require_finite_named(field, value, neuron)?;
+        NeuronScalar {
+            neuron,
+            field,
+            value,
+        }
+        .require_finite()?;
     }
     Ok(())
-}
-
-fn require_finite_named(field: &'static str, value: f32, neuron: usize) -> Result<()> {
-    if value.is_finite() {
-        Ok(())
-    } else {
-        Err(MeshError::invalid_router_config(
-            field,
-            format!("neuron {neuron} {field} must be finite, got {value}"),
-        ))
-    }
 }
 
 /// Unified plasticity clamp. Covers both the self-affinity range and the
@@ -704,61 +796,95 @@ fn require_finite_named(field: &'static str, value: f32, neuron: usize) -> Resul
 const PLASTICITY_WEIGHT_MIN: f32 = -1.5;
 const PLASTICITY_WEIGHT_MAX: f32 = 2.0;
 
-/// Clamp a plasticity weight update into [`PLASTICITY_WEIGHT_MIN`]..=[`PLASTICITY_WEIGHT_MAX`].
-///
-/// Non-finite updates snap to the bound of their sign rather than propagating
-/// NaN into the weight matrix.
-fn clamp_plasticity_weight(update: f32) -> f32 {
-    if update.is_finite() {
-        update.clamp(PLASTICITY_WEIGHT_MIN, PLASTICITY_WEIGHT_MAX)
-    } else if update.is_sign_positive() {
-        PLASTICITY_WEIGHT_MAX
-    } else {
-        PLASTICITY_WEIGHT_MIN
-    }
+/// Whether a channel fired this decision, plus the potentiation and decay
+/// rates applied to its weight row.
+#[derive(Clone, Copy, Debug)]
+struct WeightUpdate {
+    active: bool,
+    strengthen: f32,
+    plasticity_speed: f32,
+    decay: f32,
 }
 
-/// Move `current` toward `baseline * (1 + strengthen)` by `speed`.
+/// A caller-supplied reward for one channel.
+#[derive(Clone, Copy, Debug)]
+struct ChannelFeedback {
+    channel_idx: usize,
+    reward: f32,
+}
+
+/// A synaptic weight together with the plasticity step that produced it.
 ///
-/// `speed == 0` leaves the weight unchanged. A non-finite amplified target
-/// (extreme `plasticity_potentiate`) steps toward the clamp bound implied by
-/// the signs of `baseline` and `strengthen` instead of producing NaN.
-fn step_toward_amplified(current: f32, baseline: f32, strengthen: f32, speed: f32) -> f32 {
-    if speed == 0.0 {
-        return current;
+/// Grouping the pair keeps clamp and step helpers from taking a string of
+/// bare `f32` arguments, and gives the zero-baseline / non-finite cases a
+/// single place to decide which clamp bound to approach.
+#[derive(Clone, Copy, Debug)]
+struct PlasticityStep {
+    current: f32,
+    baseline: f32,
+}
+
+impl PlasticityStep {
+    /// Clamp into [`PLASTICITY_WEIGHT_MIN`]..=[`PLASTICITY_WEIGHT_MAX`].
+    ///
+    /// Non-finite updates snap to the bound of their sign rather than
+    /// propagating NaN into the weight matrix.
+    fn clamp(update: f32) -> f32 {
+        if update.is_finite() {
+            update.clamp(PLASTICITY_WEIGHT_MIN, PLASTICITY_WEIGHT_MAX)
+        } else if update.is_sign_positive() {
+            PLASTICITY_WEIGHT_MAX
+        } else {
+            PLASTICITY_WEIGHT_MIN
+        }
     }
-    let target = baseline * (1.0 + strengthen);
-    let update = if target.is_finite() {
-        current + (target - current) * speed
-    } else {
-        let extreme =
-            if (baseline > 0.0 && strengthen >= -1.0) || (baseline < 0.0 && strengthen < -1.0) {
+
+    /// Move toward `baseline * (1 + strengthen)` by `speed`.
+    ///
+    /// `speed == 0` leaves the weight unchanged. A zero baseline has no
+    /// sign to amplify, so an active zero-weight channel stays put even
+    /// when `strengthen` is infinite (the product would be NaN and both
+    /// sign checks would otherwise fail, dragging the weight negative).
+    /// Any other non-finite amplified target steps toward the clamp bound
+    /// implied by the signs of `baseline` and `strengthen`.
+    fn toward_amplified(self, strengthen: f32, speed: f32) -> f32 {
+        if speed == 0.0 || self.baseline == 0.0 {
+            return self.current;
+        }
+        let target = self.baseline * (1.0 + strengthen);
+        let update = if target.is_finite() {
+            self.current + (target - self.current) * speed
+        } else {
+            let extreme = if (self.baseline > 0.0 && strengthen >= -1.0)
+                || (self.baseline < 0.0 && strengthen < -1.0)
+            {
                 PLASTICITY_WEIGHT_MAX
             } else {
                 PLASTICITY_WEIGHT_MIN
             };
-        current + (extreme - current) * speed
-    };
-    clamp_plasticity_weight(update)
-}
-
-/// Mix `current` toward `baseline` by `decay`, then clamp.
-///
-/// `decay == 0` or an already-matching weight is a no-op. A non-finite
-/// difference snaps to the clamp bound on the side of `baseline`.
-fn decay_toward_baseline(current: f32, baseline: f32, decay: f32) -> f32 {
-    if decay == 0.0 || current == baseline {
-        return current;
+            self.current + (extreme - self.current) * speed
+        };
+        Self::clamp(update)
     }
-    let diff = baseline - current;
-    let update = if diff.is_finite() {
-        current + diff * decay
-    } else if baseline > current {
-        PLASTICITY_WEIGHT_MAX
-    } else {
-        PLASTICITY_WEIGHT_MIN
-    };
-    clamp_plasticity_weight(update)
+
+    /// Mix toward `baseline` by `decay`, then clamp.
+    ///
+    /// `decay == 0` or an already-matching weight is a no-op. A non-finite
+    /// difference snaps to the clamp bound on the side of `baseline`.
+    fn decay(self, decay: f32) -> f32 {
+        if decay == 0.0 || self.current == self.baseline {
+            return self.current;
+        }
+        let diff = self.baseline - self.current;
+        let update = if diff.is_finite() {
+            self.current + diff * decay
+        } else if self.baseline > self.current {
+            PLASTICITY_WEIGHT_MAX
+        } else {
+            PLASTICITY_WEIGHT_MIN
+        };
+        Self::clamp(update)
+    }
 }
 
 fn validate_fatigue_and_baseline(
@@ -948,10 +1074,18 @@ impl ChannelRouter {
         }
 
         let timesteps = self.config.routing_timesteps;
-        let spike_counts =
-            self.integrate_signals(signals, &effective_thresholds, &effective_leaks, timesteps);
-        let (firing_rates, active_channels) =
-            firing_decision(&spike_counts, timesteps, self.config.min_fire_rate);
+        let tick = IntegrationTick {
+            signals,
+            effective_thresholds: &effective_thresholds,
+            effective_leaks: &effective_leaks,
+        };
+        let spike_counts = self.integrate_signals(&tick, timesteps);
+        let (firing_rates, active_channels) = FiringWindow {
+            spike_counts: &spike_counts,
+            timesteps,
+            min_rate: self.config.min_fire_rate,
+        }
+        .decide();
 
         // Apply use-it-or-lose-it plasticity.
         self.apply_plasticity(&active_channels, mods);
@@ -967,45 +1101,93 @@ impl ChannelRouter {
 
 /// Cortisol raises the threshold (always, plus extra on fatigued channels);
 /// dopamine lowers it. Result is clamped to the stability interval.
-fn effective_threshold(baseline: f32, fatigue: f32, mods: &NeuromodState) -> f32 {
-    let baseline_stress = 1.0 + mods.cortisol * 0.5;
-    let fatigue_amplification = 1.0 + mods.cortisol * fatigue;
-    let dopamine_factor = 1.0 - mods.dopamine * 0.5;
-    (baseline * baseline_stress * fatigue_amplification * dopamine_factor).clamp(0.05, 2.0)
+///
+/// The product is grouped as `baseline * (baseline_stress * fatigue_amplification) * dopamine_factor`
+/// so the IEEE-754 rounding matches the pre-extraction `compute_effective_params`.
+/// A left-associative product differs by several ulps on a large fraction of the
+/// valid domain and can flip a near-threshold fire.
+fn effective_threshold(state: &ThresholdModulation) -> f32 {
+    let baseline_stress = 1.0 + state.mods.cortisol * 0.5;
+    let fatigue_amplification = 1.0 + state.mods.cortisol * state.fatigue;
+    let dopamine_factor = 1.0 - state.mods.dopamine * 0.5;
+    let fatigue_factor = baseline_stress * fatigue_amplification;
+    (state.baseline * fatigue_factor * dopamine_factor).clamp(0.05, 2.0)
+}
+
+/// Baseline threshold, channel fatigue, and the neuromodulators that scale them.
+#[derive(Clone, Copy, Debug)]
+struct ThresholdModulation<'a> {
+    baseline: f32,
+    fatigue: f32,
+    mods: &'a NeuromodState,
 }
 
 /// Serotonin raises leak (less persistence). Result stays in `0.0..=1.0`.
-fn effective_leak(baseline: f32, serotonin: f32) -> f32 {
-    (baseline * (1.0 + serotonin)).clamp(0.0, 1.0)
+fn effective_leak(modulation: &LeakModulation) -> f32 {
+    (modulation.baseline * (1.0 + modulation.serotonin)).clamp(0.0, 1.0)
 }
 
-/// Accumulate fatigue on an active channel, recover it on an idle one.
-/// Both results stay in `0.0..=1.0`.
-fn next_fatigue(current: f32, active: bool, accumulation: f32, recovery: f32) -> f32 {
-    if active {
-        (current + accumulation).min(1.0)
-    } else {
-        (current - recovery).max(0.0)
+/// Baseline leak and the serotonin level that scales it.
+#[derive(Clone, Copy, Debug)]
+struct LeakModulation {
+    baseline: f32,
+    serotonin: f32,
+}
+
+/// One channel's fatigue update: current level plus the accumulation or
+/// recovery step selected by whether the channel fired.
+#[derive(Clone, Copy, Debug)]
+struct FatigueUpdate {
+    current: f32,
+    active: bool,
+    accumulation: f32,
+    recovery: f32,
+}
+
+impl FatigueUpdate {
+    /// Accumulate fatigue on an active channel, recover it on an idle one.
+    /// Both results stay in `0.0..=1.0`.
+    fn next(self) -> f32 {
+        if self.active {
+            (self.current + self.accumulation).min(1.0)
+        } else {
+            (self.current - self.recovery).max(0.0)
+        }
     }
 }
 
-/// Classify channels from spike counts. Rate is spikes / timesteps; a channel
-/// is active when that rate meets `min_rate`.
-fn firing_decision(
-    spike_counts: &[u32],
+/// Spike counts plus the minimum rate that turns a channel active.
+#[derive(Clone, Copy, Debug)]
+struct FiringWindow<'a> {
+    spike_counts: &'a [u32],
     timesteps: usize,
     min_rate: f32,
-) -> (Vec<f32>, Vec<usize>) {
-    let mut firing_rates = Vec::with_capacity(spike_counts.len());
-    let mut active_channels = Vec::new();
-    for (i, &spikes) in spike_counts.iter().enumerate() {
-        let rate = spikes as f32 / timesteps as f32;
-        if rate >= min_rate {
-            active_channels.push(i);
+}
+
+impl FiringWindow<'_> {
+    /// Classify channels from spike counts. Rate is spikes / timesteps; a
+    /// channel is active when that rate meets `min_rate`.
+    fn decide(self) -> (Vec<f32>, Vec<usize>) {
+        let mut firing_rates = Vec::with_capacity(self.spike_counts.len());
+        let mut active_channels = Vec::new();
+        for (i, &spikes) in self.spike_counts.iter().enumerate() {
+            let rate = spikes as f32 / self.timesteps as f32;
+            if rate >= self.min_rate {
+                active_channels.push(i);
+            }
+            firing_rates.push(rate);
         }
-        firing_rates.push(rate);
+        (firing_rates, active_channels)
     }
-    (firing_rates, active_channels)
+}
+
+/// One integration tick's inputs: raw signals plus the per-channel
+/// threshold and leak already scaled by neuromodulators.
+#[derive(Clone, Copy, Debug)]
+struct IntegrationTick<'a> {
+    signals: &'a [f32],
+    effective_thresholds: &'a [f32],
+    effective_leaks: &'a [f32],
 }
 
 impl ChannelRouter {
@@ -1016,13 +1198,7 @@ impl ChannelRouter {
     /// and checks against the dopamine/cortisol-modulated threshold. Neuron
     /// membrane potentials (`v`) are updated in place; per-channel spike counts
     /// are incremented on each fire.
-    fn integrate_signals(
-        &mut self,
-        signals: &[f32],
-        effective_thresholds: &[f32],
-        effective_leaks: &[f32],
-        timesteps: usize,
-    ) -> Vec<u32> {
+    fn integrate_signals(&mut self, tick: &IntegrationTick, timesteps: usize) -> Vec<u32> {
         let n = self.config.channel_count;
         let mut spike_counts = vec![0u32; n];
         for _ in 0..timesteps {
@@ -1030,13 +1206,7 @@ impl ChannelRouter {
             // spike_counts, effective_thresholds, or effective_leaks. If
             // neurons.len() > n (malformed state), the extra neurons are
             // skipped. If neurons.len() < n, those channels produce no spikes.
-            self.integrate_one_timestep(
-                signals,
-                effective_thresholds,
-                effective_leaks,
-                &mut spike_counts,
-                n,
-            );
+            self.integrate_one_timestep(tick, &mut spike_counts, n);
         }
         spike_counts
     }
@@ -1044,22 +1214,25 @@ impl ChannelRouter {
     /// One integration tick: weighted stimulus, modulated leak, threshold check.
     fn integrate_one_timestep(
         &mut self,
-        signals: &[f32],
-        effective_thresholds: &[f32],
-        effective_leaks: &[f32],
+        tick: &IntegrationTick,
         spike_counts: &mut [u32],
         n: usize,
     ) {
         for (i, neu) in self.neurons.iter_mut().enumerate().take(n) {
             debug_assert_eq!(
                 neu.weights.len(),
-                signals.len(),
+                tick.signals.len(),
                 "Neuron weights length mismatch"
             );
-            let stimulus = weighted_stimulus(signals, &neu.weights);
-            neu.leak = effective_leaks[i];
-            neu.integrate(stimulus);
-            neu.threshold = effective_thresholds[i];
+            let stimulus = tick
+                .signals
+                .iter()
+                .zip(neu.weights.iter())
+                .map(|(sig, w)| sig * w)
+                .sum();
+            neu.leak = tick.effective_leaks[i];
+            neu.integrate(SynapticDrive { stimulus });
+            neu.threshold = tick.effective_thresholds[i];
             if neu.check_fire().is_some() {
                 spike_counts[i] += 1;
             }
@@ -1131,9 +1304,15 @@ impl ChannelRouter {
         let mut thresholds = vec![0.0f32; n];
         let mut leaks = vec![0.0f32; n];
         for i in 0..n {
-            thresholds[i] =
-                effective_threshold(self.config.threshold, self.channel_fatigue[i], mods);
-            leaks[i] = effective_leak(self.config.leak, mods.serotonin);
+            thresholds[i] = effective_threshold(&ThresholdModulation {
+                baseline: self.config.threshold,
+                fatigue: self.channel_fatigue[i],
+                mods,
+            });
+            leaks[i] = effective_leak(&LeakModulation {
+                baseline: self.config.leak,
+                serotonin: mods.serotonin,
+            });
         }
         (thresholds, leaks)
     }
@@ -1175,29 +1354,36 @@ impl ChannelRouter {
 
         for i in 0..n {
             let active = active_channels.contains(&i);
-            self.update_channel_weights(i, n, active, strengthen, plasticity_speed, decay);
-            self.channel_fatigue[i] =
-                next_fatigue(self.channel_fatigue[i], active, fatigue_acc, fatigue_rec);
+            self.update_channel_weights(
+                i,
+                n,
+                &WeightUpdate {
+                    active,
+                    strengthen,
+                    plasticity_speed,
+                    decay,
+                },
+            );
+            self.channel_fatigue[i] = FatigueUpdate {
+                current: self.channel_fatigue[i],
+                active,
+                accumulation: fatigue_acc,
+                recovery: fatigue_rec,
+            }
+            .next();
         }
     }
 
     /// One channel's weight row: potentiate when active, decay toward baseline otherwise.
-    fn update_channel_weights(
-        &mut self,
-        channel: usize,
-        n: usize,
-        active: bool,
-        strengthen: f32,
-        plasticity_speed: f32,
-        decay: f32,
-    ) {
+    fn update_channel_weights(&mut self, channel: usize, n: usize, update: &WeightUpdate) {
         for j in 0..n {
             let baseline = self.baseline_weights[channel][j];
             let current = self.neurons[channel].weights[j];
-            self.neurons[channel].weights[j] = if active {
-                step_toward_amplified(current, baseline, strengthen, plasticity_speed)
+            let step = PlasticityStep { current, baseline };
+            self.neurons[channel].weights[j] = if update.active {
+                step.toward_amplified(update.strengthen, update.plasticity_speed)
             } else {
-                decay_toward_baseline(current, baseline, decay)
+                step.decay(update.decay)
             };
         }
     }
@@ -1209,6 +1395,13 @@ impl ChannelRouter {
     /// the lazy repair in `route_modulated` has not yet run) is safe. See
     /// `ensure_neuromod_state_synced` for the exact shape check.
     pub fn apply_feedback(&mut self, channel_idx: usize, reward: f32) {
+        self.apply_channel_feedback(ChannelFeedback {
+            channel_idx,
+            reward,
+        });
+    }
+
+    fn apply_channel_feedback(&mut self, feedback: ChannelFeedback) {
         self.ensure_neuromod_state_synced();
         let n = self.config.channel_count;
         // Guard all indexing: channel_idx bounds, neuron vector length,
@@ -1216,24 +1409,25 @@ impl ChannelRouter {
         // deserialized state could have short weight rows even when
         // neurons.len() >= n.
         debug_assert!(
-            channel_idx < n
+            feedback.channel_idx < n
                 && self.neurons.len() >= n
                 && self.neurons.iter().all(|neu| neu.weights.len() >= n),
             "apply_feedback invariant violation — ensure_neuromod_state_synced should have rebuilt"
         );
-        if channel_idx >= n
+        if feedback.channel_idx >= n
             || n > self.neurons.len()
             || self.neurons.iter().any(|neu| neu.weights.len() < n)
         {
             return;
         }
 
-        let delta = reward * 0.01;
+        let channel_idx = feedback.channel_idx;
+        let delta = feedback.reward * 0.01;
 
         self.neurons[channel_idx].weights[channel_idx] =
             (self.neurons[channel_idx].weights[channel_idx] + delta).clamp(0.1, 2.0);
 
-        if reward > 0.0 {
+        if feedback.reward > 0.0 {
             for j in 0..n {
                 if j != channel_idx {
                     self.neurons[j].weights[channel_idx] =
@@ -1243,14 +1437,14 @@ impl ChannelRouter {
         }
 
         // Keep plasticity baseline in sync with feedback-driven learning.
-        self.sync_baseline_after_feedback(channel_idx, reward);
+        self.sync_baseline_after_feedback(feedback);
     }
 
     /// Sync `baseline_weights` for the rows affected by a feedback call so that
     /// the new feedback-adjusted weights become the reference point for future
     /// use-it-or-lose-it decay. Skipped if `baseline_weights` hasn't been
     /// initialized yet (e.g. before the first `route_modulated` call).
-    fn sync_baseline_after_feedback(&mut self, channel_idx: usize, reward: f32) {
+    fn sync_baseline_after_feedback(&mut self, feedback: ChannelFeedback) {
         let n = self.config.channel_count;
         // Belt-and-suspenders: ensure_neuromod_state_synced() in apply_feedback
         // should have already rebuilt baseline_weights if rows were malformed,
@@ -1266,9 +1460,10 @@ impl ChannelRouter {
         {
             return;
         }
+        let channel_idx = feedback.channel_idx;
         self.baseline_weights[channel_idx][channel_idx] =
             self.neurons[channel_idx].weights[channel_idx];
-        if reward > 0.0 {
+        if feedback.reward > 0.0 {
             for j in 0..n {
                 if j != channel_idx {
                     self.baseline_weights[j][channel_idx] = self.neurons[j].weights[channel_idx];
@@ -1278,7 +1473,7 @@ impl ChannelRouter {
     }
 
     /// Apply global neuromodulatory gain to all neurons.
-    pub fn set_global_gain(&mut self, gain: f32) {
+    pub fn set_global_gain(&mut self, gain: ModulationGain) {
         for neu in &mut self.neurons {
             neu.set_gain(gain);
         }
@@ -1742,6 +1937,35 @@ mod validate_tests {
         let res_speed = router_speed.route_modulated([1.0, 0.0, 0.0], &NeuromodState::balanced());
         assert!(res_speed.is_ok());
         assert_weights_finite_and_clamped(&router_speed.weight_matrix());
+    }
+
+    #[test]
+    fn zero_baseline_with_infinite_strengthen_stays_put() {
+        // 0 * inf is NaN. Both sign checks fail, so a missing zero-baseline
+        // guard used to step the active channel toward the negative clamp.
+        let step = PlasticityStep {
+            current: 0.0,
+            baseline: 0.0,
+        };
+        assert_eq!(step.toward_amplified(f32::INFINITY, 1.0), 0.0);
+        assert_eq!(step.toward_amplified(f32::NEG_INFINITY, 0.5), 0.0);
+
+        let positive = PlasticityStep {
+            current: 0.4,
+            baseline: 1.0,
+        };
+        assert!(
+            positive.toward_amplified(f32::INFINITY, 1.0) > 0.4,
+            "a positive baseline must still step toward the upper clamp"
+        );
+        let negative = PlasticityStep {
+            current: -0.2,
+            baseline: -1.0,
+        };
+        assert!(
+            negative.toward_amplified(f32::INFINITY, 1.0) < -0.2,
+            "a negative baseline with extreme strengthen must step toward the lower clamp"
+        );
     }
 
     fn assert_weights_finite_and_clamped(matrix: &[Vec<f32>]) {
