@@ -329,58 +329,62 @@ impl RouterConfig {
                 ),
             ));
         }
-        ConfigScalar {
-            field: "self_weight",
-            value: self.self_weight,
-        }
-        .require_finite()?;
-        ConfigScalar {
-            field: "cross_weight",
-            value: self.cross_weight,
-        }
-        .require_finite()?;
-        ConfigScalar {
-            field: "threshold",
-            value: self.threshold,
-        }
-        .require_finite()?;
-        ConfigScalar {
-            field: "leak",
-            value: self.leak,
-        }
-        .require_unit_interval()?;
-        ConfigScalar {
-            field: "min_fire_rate",
-            value: self.min_fire_rate,
-        }
-        .require_unit_interval()?;
-        ConfigScalar {
-            field: "plasticity_decay",
-            value: self.plasticity_decay,
-        }
-        .require_unit_interval()?;
-        ConfigScalar {
-            field: "plasticity_potentiate",
-            value: self.plasticity_potentiate,
-        }
-        .require_non_negative()?;
-        ConfigScalar {
-            field: "plasticity_speed",
-            value: self.plasticity_speed,
-        }
-        .require_unit_interval()?;
-        ConfigScalar {
-            field: "fatigue_accumulation",
-            value: self.fatigue_accumulation,
-        }
-        .require_unit_interval()?;
-        ConfigScalar {
-            field: "fatigue_recovery",
-            value: self.fatigue_recovery,
-        }
-        .require_unit_interval()?;
-        Ok(())
+        validate_config_scalars(self)
     }
+}
+
+fn validate_config_scalars(config: &RouterConfig) -> Result<()> {
+    ConfigScalar {
+        field: "self_weight",
+        value: config.self_weight,
+    }
+    .require_finite()?;
+    ConfigScalar {
+        field: "cross_weight",
+        value: config.cross_weight,
+    }
+    .require_finite()?;
+    ConfigScalar {
+        field: "threshold",
+        value: config.threshold,
+    }
+    .require_finite()?;
+    ConfigScalar {
+        field: "leak",
+        value: config.leak,
+    }
+    .require_unit_interval()?;
+    ConfigScalar {
+        field: "min_fire_rate",
+        value: config.min_fire_rate,
+    }
+    .require_unit_interval()?;
+    ConfigScalar {
+        field: "plasticity_decay",
+        value: config.plasticity_decay,
+    }
+    .require_unit_interval()?;
+    ConfigScalar {
+        field: "plasticity_potentiate",
+        value: config.plasticity_potentiate,
+    }
+    .require_non_negative()?;
+    ConfigScalar {
+        field: "plasticity_speed",
+        value: config.plasticity_speed,
+    }
+    .require_unit_interval()?;
+    ConfigScalar {
+        field: "fatigue_accumulation",
+        value: config.fatigue_accumulation,
+    }
+    .require_unit_interval()?;
+    ConfigScalar {
+        field: "fatigue_recovery",
+        value: config.fatigue_recovery,
+    }
+    .require_unit_interval()?;
+    Ok(())
 }
 
 /// A named config scalar and the constraint it must satisfy before a router
