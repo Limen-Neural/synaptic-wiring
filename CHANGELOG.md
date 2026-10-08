@@ -17,7 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Router**: a zero baseline weight no longer steps toward the negative
   plasticity clamp when `plasticity_potentiate` is non-finite. The amplified
   target is `0 * ±inf` (NaN); both sign checks fail, so the weight now stays
-  put. Effective thresholds keep the pre-extraction product grouping
+  put. Finite amplified targets still move restored nonzero weights toward
+  a zero baseline. Effective thresholds keep the pre-extraction product grouping
   `baseline * (baseline_stress * fatigue_amplification) * dopamine_factor`
   so near-threshold firing stays bit-identical (LIM-1490).
 

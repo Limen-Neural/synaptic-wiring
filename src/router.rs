@@ -845,17 +845,21 @@ impl PlasticityStep {
 
     /// Move toward `baseline * (1 + strengthen)` by `speed`.
     ///
-    /// `speed == 0` leaves the weight unchanged. A zero baseline has no
-    /// sign to amplify, so an active zero-weight channel stays put even
-    /// when `strengthen` is infinite (the product would be NaN and both
-    /// sign checks would otherwise fail, dragging the weight negative).
+    /// `speed == 0` leaves the weight unchanged. Finite targets move the
+    /// weight toward the amplified baseline, including a baseline of zero.
+    /// A zero baseline with non-finite `strengthen` stays put: the target
+    /// is NaN and both sign checks would otherwise fail, dragging the weight
+    /// negative.
     /// Any other non-finite amplified target steps toward the clamp bound
     /// implied by the signs of `baseline` and `strengthen`.
     fn toward_amplified(self, strengthen: f32, speed: f32) -> f32 {
-        if speed == 0.0 || self.baseline == 0.0 {
+        if speed == 0.0 {
             return self.current;
         }
         let target = self.baseline * (1.0 + strengthen);
+        if target.is_nan() && self.baseline == 0.0 {
+            return self.current;
+        }
         let update = if target.is_finite() {
             self.current + (target - self.current) * speed
         } else {
@@ -1944,15 +1948,43 @@ mod validate_tests {
     }
 
     #[test]
+    fn restored_zero_baseline_weights_converge_when_active() {
+        for current in [0.8_f32, -0.8] {
+            for speed in [0.0, 0.5, 1.0] {
+                let config = RouterConfig {
+                    channel_count: 1,
+                    self_weight: 0.8,
+                    threshold: 0.1,
+                    leak: 0.0,
+                    routing_timesteps: 1,
+                    plasticity_speed: speed,
+                    ..RouterConfig::default()
+                };
+                let router = ChannelRouter::try_with_config(config).unwrap();
+                let mut snapshot = serde_json::to_value(&router).unwrap();
+                snapshot["neurons"][0]["weights"][0] = json!(current);
+                snapshot["baseline_weights"][0][0] = json!(0.0);
+                let mut restored: ChannelRouter = serde_json::from_value(snapshot).unwrap();
+
+                let decision = restored.route([current.signum()]).unwrap();
+                assert_eq!(decision.active_channels, vec![0]);
+                assert_eq!(restored.weight_matrix()[0][0], current * (1.0 - speed));
+            }
+        }
+    }
+
+    #[test]
     fn zero_baseline_with_infinite_strengthen_stays_put() {
         // 0 * inf is NaN. Both sign checks fail, so a missing zero-baseline
         // guard used to step the active channel toward the negative clamp.
-        let step = PlasticityStep {
-            current: 0.0,
-            baseline: 0.0,
-        };
-        assert_eq!(step.toward_amplified(f32::INFINITY, 1.0), 0.0);
-        assert_eq!(step.toward_amplified(f32::NEG_INFINITY, 0.5), 0.0);
+        for current in [0.0, 0.8, -0.8] {
+            let step = PlasticityStep {
+                current,
+                baseline: 0.0,
+            };
+            assert_eq!(step.toward_amplified(f32::INFINITY, 1.0), current);
+            assert_eq!(step.toward_amplified(f32::NEG_INFINITY, 0.5), current);
+        }
 
         let positive = PlasticityStep {
             current: 0.4,
