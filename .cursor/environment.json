@@ -1,0 +1,4 @@
+{
+  "name": "synaptic-wiring",
+  "install": "bash .cursor/install.sh"
+}
