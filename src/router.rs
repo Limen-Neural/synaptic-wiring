@@ -333,6 +333,8 @@ impl RouterConfig {
     }
 }
 
+/// Enforce finite weights and thresholds, unit-interval rates, and nonnegative
+/// potentiation before construction or snapshot restoration.
 fn validate_config_scalars(config: &RouterConfig) -> Result<()> {
     ConfigScalar {
         field: "self_weight",
@@ -396,6 +398,7 @@ struct ConfigScalar {
 }
 
 impl ConfigScalar {
+    /// Reject NaN and infinities with an error naming the config field.
     fn require_finite(self) -> Result<()> {
         if self.value.is_finite() {
             Ok(())
@@ -407,6 +410,7 @@ impl ConfigScalar {
         }
     }
 
+    /// Require a finite probability or rate in the inclusive unit interval.
     fn require_unit_interval(self) -> Result<()> {
         self.require_finite()?;
         if (0.0..=1.0).contains(&self.value) {
@@ -419,6 +423,7 @@ impl ConfigScalar {
         }
     }
 
+    /// Require a finite scale factor that is zero or positive.
     fn require_non_negative(self) -> Result<()> {
         self.require_finite()?;
         if self.value >= 0.0 {
@@ -655,6 +660,7 @@ struct RawChannelRouter {
 }
 
 impl RawChannelRouter {
+    /// Restore legacy defaults and validate all snapshot shapes and values.
     fn into_router(self) -> Result<ChannelRouter> {
         let n_neurons = self.neurons.len();
         let config = LegacyConfig {
@@ -692,6 +698,8 @@ struct LegacyConfig {
 }
 
 impl LegacyConfig {
+    /// Use defaults for an omitted config, preserve a supplied config, and
+    /// reject explicit null rather than treating it as a legacy omission.
     fn resolve(self) -> Result<RouterConfig> {
         match self.field {
             LegacyField::Omitted => Ok(RouterConfig {
@@ -760,6 +768,7 @@ struct NeuronScalar {
 }
 
 impl NeuronScalar {
+    /// Reject a non-finite neuron parameter, naming its neuron and field.
     fn require_finite(self) -> Result<()> {
         if self.value.is_finite() {
             Ok(())
@@ -775,6 +784,7 @@ impl NeuronScalar {
     }
 }
 
+/// Validate membrane, leak, threshold, and gain values before restoring a neuron.
 fn require_finite_neuron_params(neuron: usize, neu: &NeuromodNeuron) -> Result<()> {
     for (field, value) in [
         ("v", neu.v),
@@ -877,11 +887,12 @@ impl PlasticityStep {
 
     /// Mix toward `baseline` by `decay`, then clamp.
     ///
-    /// `decay == 0` or an already-matching weight is a no-op. A non-finite
-    /// difference snaps to the clamp bound on the side of `baseline`.
+    /// `decay == 0` or an already-matching weight skips interpolation but
+    /// still clamps the current weight. A non-finite difference snaps to
+    /// the clamp bound on the side of `baseline`.
     fn decay(self, decay: f32) -> f32 {
         if decay == 0.0 || self.current == self.baseline {
-            return self.current;
+            return Self::clamp(self.current);
         }
         let diff = self.baseline - self.current;
         let update = if diff.is_finite() {
@@ -895,6 +906,8 @@ impl PlasticityStep {
     }
 }
 
+/// Require fatigue in the unit interval and a finite, square baseline matrix,
+/// with both structures matching the configured channel count.
 fn validate_fatigue_and_baseline(
     n: usize,
     channel_fatigue: &[f32],
@@ -1945,6 +1958,37 @@ mod validate_tests {
         let res_speed = router_speed.route_modulated([1.0, 0.0, 0.0], &NeuromodState::balanced());
         assert!(res_speed.is_ok());
         assert_weights_finite_and_clamped(&router_speed.weight_matrix());
+    }
+
+    #[test]
+    fn idle_weights_are_clamped_even_without_a_decay_step() {
+        for (current, expected) in [(10.0, 2.0), (-10.0, -1.5)] {
+            for decay in [0.0, 0.5] {
+                let config = RouterConfig {
+                    channel_count: 1,
+                    self_weight: current,
+                    plasticity_decay: decay,
+                    ..RouterConfig::default()
+                };
+                let mut router = ChannelRouter::try_with_config(config).unwrap();
+                let decision = router.route([0.0]).unwrap();
+                assert!(decision.active_channels.is_empty());
+                assert_eq!(router.weight_matrix()[0][0], expected);
+            }
+        }
+
+        // A restored weight can differ from its baseline even with decay disabled.
+        let config = RouterConfig {
+            channel_count: 1,
+            plasticity_decay: 0.0,
+            ..RouterConfig::default()
+        };
+        let router = ChannelRouter::try_with_config(config).unwrap();
+        let mut snapshot = serde_json::to_value(&router).unwrap();
+        snapshot["neurons"][0]["weights"][0] = json!(10.0);
+        let mut restored: ChannelRouter = serde_json::from_value(snapshot).unwrap();
+        assert!(restored.route([0.0]).unwrap().active_channels.is_empty());
+        assert_eq!(restored.weight_matrix()[0][0], 2.0);
     }
 
     #[test]

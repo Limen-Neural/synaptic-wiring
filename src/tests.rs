@@ -671,6 +671,7 @@ fn neuromod_with_field(field: &str, value: f32) -> NeuromodState {
     mods
 }
 
+/// Check the exact neuromodulator error variant, its payload, and display context.
 fn assert_neuromod_error(err: MeshError, expected: &MeshError, display_must_contain: &[&str]) {
     let msg = format!("{err}");
     assert_eq!(
@@ -705,6 +706,7 @@ fn assert_neuromod_error(err: MeshError, expected: &MeshError, display_must_cont
     }
 }
 
+/// Compare every observable field of two routing decisions.
 fn assert_route_matches(left: &RoutingDecision, right: &RoutingDecision) {
     assert_eq!(left.active_channels, right.active_channels);
     assert_eq!(left.firing_rates, right.firing_rates);
