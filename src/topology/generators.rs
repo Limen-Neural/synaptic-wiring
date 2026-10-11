@@ -14,6 +14,8 @@
 //! - Barabási, A.-L. & Albert, R. (1999). *Emergence of scaling in
 //!   random networks.* Science, 286, 509–512.
 
+use std::f64::consts::GOLDEN_RATIO;
+
 use crate::error::{MeshError, Result};
 use crate::topology::graph::SynapticGraph;
 use crate::types::{Polarity, SynapseDescriptor};
@@ -23,9 +25,8 @@ use crate::types::{Polarity, SynapseDescriptor};
 /// Simple deterministic hash from two indices — produces a value in [0, 1).
 /// Uses a combination of golden-ratio fractional hashing and bit mixing.
 fn hash_pair(a: usize, b: usize) -> f32 {
-    const GOLDEN: f64 = 1.618_033_988_749_895;
     const SILVER: f64 = 2.414_213_562_373_095;
-    let mixed = (a as f64 * GOLDEN + b as f64 * SILVER) % 1.0;
+    let mixed = (a as f64 * GOLDEN_RATIO + b as f64 * SILVER) % 1.0;
     mixed.abs() as f32
 }
 

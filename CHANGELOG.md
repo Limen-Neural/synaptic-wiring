@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **MSRV**: Rust pin raised from **1.98.1** to **1.99.0** in `Cargo.toml`
+  `rust-version`, `rust-toolchain.toml`, CI (toolchain install, packaging,
+  and `cargo-deny`), coverage workflow, README, and DeepSource (LIM-1516).
+- **Packaging**: `exclude` now also drops `/.deepsource.toml` explicitly;
+  entries are sorted for easier diff review (LIM-1516).
+
 ## [0.3.0]
 
 `0.3.0` is the first crates.io release, published under the canonical crate

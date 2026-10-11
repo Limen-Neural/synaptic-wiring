@@ -4,7 +4,7 @@ version = "0.3.0"
 edition = "2024"
 # Keep identical to rust-toolchain.toml `channel` and the CI / coverage
 # workflow `toolchain:` pins (see REVIEW.md "MSRV pin rule").
-rust-version = "1.98.1"
+rust-version = "1.99.0"
 license = "MIT OR Apache-2.0"
 description = "SNN wiring, topology, temporal delays, sparse connectivity, and routing infrastructure for neuromorphic computing."
 authors = ["Raul Cardenas Montoya <montoyaraul34@gmail.com>"]
@@ -20,16 +20,16 @@ categories = ["science", "algorithms", "simulation"]
 # `cargo package --locked --list` locally after touching this list.
 # See issues #34, #49, and #36.
 exclude = [
-    "/docs/",
-    "/.github/",
-    "/.config/",
-    "/REVIEW.md",
     "/.codacy.yml",
+    "/.config/",
     "/.deepsource.toml",
     "/.devin/",
+    "/.github/",
     "/.gitignore",
     "/AGENTS.md",
+    "/REVIEW.md",
     "/deny.toml",
+    "/docs/",
     "/rust-toolchain.toml",
 ]
 

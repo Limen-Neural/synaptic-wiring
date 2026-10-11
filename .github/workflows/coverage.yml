@@ -24,10 +24,10 @@ jobs:
 
       # Keep in lockstep with rust-toolchain.toml / Cargo.toml rust-version / ci.yml
       # (MSRV pin rule / #35). Do not invent a second toolchain here.
-      - name: Install Rust 1.98.1
+      - name: Install Rust 1.99.0
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
         with:
-          toolchain: "1.98.1"
+          toolchain: "1.99.0"
           components: llvm-tools-preview
 
       - name: Rust Cache
