@@ -12,8 +12,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **MSRV**: Rust pin raised from **1.98.1** to **1.99.0** in `Cargo.toml`
   `rust-version`, `rust-toolchain.toml`, CI (toolchain install, packaging,
   and `cargo-deny`), coverage workflow, README, and DeepSource (LIM-1516).
-- **Packaging**: `exclude` now also drops `/.deepsource.toml` explicitly;
-  entries are sorted for easier diff review (LIM-1516).
+- **Packaging**: `exclude` entries sorted for easier diff review (LIM-1516).
+- **Router**: `NeuromodNeuron::integrate` takes `SynapticDrive`,
+  `set_gain` / `ChannelRouter::set_global_gain` take `ModulationGain`, and
+  `RoutingDecision::is_active` takes `ChannelIndex`. These replace bare
+  `f32` / `usize` arguments that kept `router.rs` over CodeScene's primitive
+  obsession threshold (LIM-1490).
+  Callers must import the wrappers from the crate root and migrate
+  `integrate(x)` to `integrate(SynapticDrive { stimulus: x })`,
+  `set_gain(x)` / `set_global_gain(x)` to the corresponding call with
+  `ModulationGain { value: x }`, and `is_active(i)` to
+  `is_active(ChannelIndex(i))`.
+- **Router**: a zero baseline weight no longer steps toward the negative
+  plasticity clamp when `plasticity_potentiate` is non-finite. The amplified
+  target is `0 * ±inf` (NaN); both sign checks fail, so the weight now stays
+  put. With nonzero `plasticity_speed`, finite amplified targets still move
+  restored nonzero weights toward a zero baseline. Idle weights remain
+  clamped to `[-1.5, 2.0]` even when decay is zero or they match their baselines.
+  Effective thresholds keep the pre-extraction product grouping
+  `baseline * (baseline_stress * fatigue_amplification) * dopamine_factor`
+  so near-threshold firing stays bit-identical (LIM-1490).
 
 ## [0.3.0]
 
@@ -284,4 +302,5 @@ First versioned history. Nothing before this tag was published or tagged.
   derivable impls, redundant borrows).
 - Fixed `cargo fmt` formatting (module ordering, debug_assert wrapping).
 
+[Unreleased]: https://github.com/Limen-Neural/synaptic-wiring/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/Limen-Neural/synaptic-wiring/releases/tag/v0.1.0
