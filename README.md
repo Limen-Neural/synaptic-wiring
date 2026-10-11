@@ -86,7 +86,7 @@ synaptic-wiring = { git = "https://github.com/Limen-Neural/synaptic-wiring" }
 
 Add `tag = "v0.3.0"` to pin a git dependency to a specific release instead of tracking `main` — see [releases](https://github.com/Limen-Neural/synaptic-wiring/releases) for the tags that exist today.
 
-**MSRV:** Rust **1.98.1**. Runtime dependencies: `serde`, `sha2`.
+**MSRV:** Rust **1.99.0**. Runtime dependencies: `serde`, `sha2`.
 
 Contributors: see
 [REVIEW.md](https://github.com/Limen-Neural/synaptic-wiring/blob/main/REVIEW.md#build-profiles)

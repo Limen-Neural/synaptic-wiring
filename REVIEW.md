@@ -11,7 +11,7 @@ Run them before claiming a PR is ready when the change touches `src/`,
 `rust-version:` pin in `.github/workflows/ci.yml` (the toolchain install,
 the packaging job, and the `cargo-deny` action) and
 `.github/workflows/coverage.yml` must stay **identical** (currently
-**1.98.1**). The `validate` job in `ci.yml` reads those workflow pins and
+**1.99.0**). The `validate` job in `ci.yml` reads those workflow pins and
 fails if they drift (issue #35 / LIM-1042).
 
 To bump MSRV:

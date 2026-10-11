@@ -5,7 +5,7 @@ name = "rust"
 enabled = true
 
   [analyzers.meta]
-  msrv = "1.98.1"
+  msrv = "1.99.0"
 
 [[analyzers]]
 name = "secrets"

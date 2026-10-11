@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **MSRV**: Rust pin raised from **1.98.1** to **1.99.0** in `Cargo.toml`
+  `rust-version`, `rust-toolchain.toml`, CI (toolchain install, packaging,
+  and `cargo-deny`), coverage workflow, README, and DeepSource (LIM-1516).
+- **Packaging**: `exclude` entries sorted for easier diff review (LIM-1516).
 - **Router**: `NeuromodNeuron::integrate` takes `SynapticDrive`,
   `set_gain` / `ChannelRouter::set_global_gain` take `ModulationGain`, and
   `RoutingDecision::is_active` takes `ChannelIndex`. These replace bare
@@ -298,4 +302,5 @@ First versioned history. Nothing before this tag was published or tagged.
   derivable impls, redundant borrows).
 - Fixed `cargo fmt` formatting (module ordering, debug_assert wrapping).
 
+[Unreleased]: https://github.com/Limen-Neural/synaptic-wiring/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/Limen-Neural/synaptic-wiring/releases/tag/v0.1.0
