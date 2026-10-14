@@ -6,8 +6,13 @@
 <p align="center">SNN wiring, topology generation, and temporal delay infrastructure</p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.3.0-informational" alt="version 0.3.0">
-  <img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue" alt="MIT OR Apache-2.0">
+  <a href="https://github.com/Limen-Neural/synaptic-wiring/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://github.com/Limen-Neural/synaptic-wiring/actions/workflows/ci.yml/badge.svg?branch=main&amp;event=push" alt="CI"></a>
+  <a href="https://codecov.io/gh/Limen-Neural/synaptic-wiring"><img src="https://codecov.io/gh/Limen-Neural/synaptic-wiring/graph/badge.svg" alt="Coverage"></a>
+  <a href="https://app.codacy.com/gh/Limen-Neural/synaptic-wiring/dashboard?utm_source=gh&amp;utm_medium=referral&amp;utm_content=&amp;utm_campaign=Badge_grade"><img src="https://app.codacy.com/project/badge/Grade/c2e1ec7ded6c4d01a2c3e0188ad77fca" alt="Codacy Badge"></a>
+  <a href="https://qlty.sh/gh/Limen-Neural/projects/synaptic-wiring"><img src="https://qlty.sh/gh/Limen-Neural/projects/synaptic-wiring/maintainability.svg" alt="Maintainability: Qlty"></a>
+  <a href="https://crates.io/crates/synaptic-wiring"><img src="https://img.shields.io/crates/v/synaptic-wiring.svg?label=crates.io" alt="crates.io"></a>
+  <a href="https://docs.rs/synaptic-wiring"><img src="https://docs.rs/synaptic-wiring/badge.svg" alt="docs.rs"></a>
+  <a href="#license"><img src="https://img.shields.io/crates/l/synaptic-wiring.svg" alt="License"></a>
 </p>
 
 ---
