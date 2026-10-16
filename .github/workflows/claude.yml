@@ -4,7 +4,8 @@
 # authored by `claude[bot]`, not by a personal account.
 #
 # Requires, in repo Settings → Secrets and variables → Actions:
-#   ANTHROPIC_API_KEY   (do not commit it)
+#   CLAUDE_CODE_OAUTH_TOKEN   (Claude Max/Pro subscription token from running
+#                              `claude setup-token` locally; do not commit it)
 # and the Claude GitHub App installed on this repository.
 #
 # Only repository members, owners and collaborators can trigger it. Third-party
@@ -82,7 +83,7 @@ jobs:
       - name: Run Claude
         uses: anthropics/claude-code-action@c3d45e8e941e1b2ad7b278c57482d9c5bf1f35b3 # v1.0.99
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # Let Claude file and list issues with the App token, and run the
           # repo's own checks from REVIEW.md before proposing changes.
           claude_args: |
