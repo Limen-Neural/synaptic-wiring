@@ -39,7 +39,7 @@ Consequences worth knowing before editing:
 - `propagate` is **one hop**. It never decides what fires next; `delay = 0` arrives in the same call. `tests/propagate_contract.rs` pins destination, sign, magnitude and delivery tick, and the README and rustdoc state the same contract. Treat a behavior change there as a breaking change.
 - Fallible entry points are **error-atomic**: input is validated (length, finiteness) before the tick, delay buffer or output is mutated.
 - The `*_into` path must not heap-allocate after `SynapticMesh::new` (the graded variant relies on a pre-reserved `pending_scratch`, skipped by serde). `tests/propagate_into_alloc.rs` enforces this with a counting global allocator, so it must stay its own test binary.
-- Polarity follows Dale's law per source neuron. `SynapseDescriptor.weight` is a non-negative magnitude and `effective_weight()` applies the sign from polarity; the graph stores signed weights. Negative or non-finite magnitudes are rejected, not normalized.
+- The generators assign polarity per source neuron (Dale's law). Hand-built `SynapseDescriptor`s may set polarity per synapse, and `SynapticGraph::from_descriptors` does not enforce Dale's law. `SynapseDescriptor.weight` is a non-negative magnitude and `effective_weight()` applies the sign from polarity; the graph stores signed weights. Negative or non-finite magnitudes are rejected, not normalized.
 
 ### Conventions that span files
 
@@ -48,7 +48,7 @@ Consequences worth knowing before editing:
 - **Determinism, no RNG.** Generators in `src/topology/generators.rs` derive everything from index hashing (golden-ratio fractions). Changing the math changes every generated graph: record it in the CHANGELOG and update the golden values in `tests/topology_digest.rs`.
 - **Topology digest** (`src/topology/digest.rs`) is a versioned SHA-256 of the canonical logical graph. Changing what is hashed requires bumping `TOPOLOGY_DIGEST_SCHEMA_VERSION`.
 - **Two CSR types.** `SynapticGraph` (u32 targets, delays and polarity) is what the mesh uses. `SparseSynapticMap<const N>` in `src/sparse.rs` is a separate GPU-oriented map with `u16` indices capped at `MAX_SPARSE_NEURONS` (65,536). `to_gpu_arrays` exists on both.
-- **Router is independent.** `ChannelRouter` (`src/router.rs`, the largest file) neither uses nor is used by the mesh. Bare `f32`/`usize` arguments there are wrapped in newtypes (`SynapticDrive`, `ModulationGain`, `ChannelIndex`) to satisfy CodeScene's primitive-obsession check.
+- **Router is independent.** `ChannelRouter` (`src/router.rs`, the largest file) neither uses nor is used by the mesh. `NeuromodNeuron::integrate` / `set_gain` and `ChannelRouter::set_global_gain` take newtypes (`SynapticDrive`, `ModulationGain`) and `RoutingDecision::is_active` takes `ChannelIndex`, to satisfy CodeScene's primitive-obsession check; other APIs such as `ChannelRouter::apply_feedback` still take primitive `usize`/`f32`.
 - `MeshError` (`src/error.rs`) is the single error enum for the crate.
 
 ## Process
