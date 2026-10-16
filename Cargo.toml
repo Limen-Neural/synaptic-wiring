@@ -27,6 +27,7 @@ exclude = [
     "/.github/",
     "/.gitignore",
     "/AGENTS.md",
+    "/CLAUDE.md",
     "/REVIEW.md",
     "/deny.toml",
     "/docs/",
