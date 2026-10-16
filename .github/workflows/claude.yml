@@ -18,8 +18,12 @@ on:
     types: [created]
   pull_request_review:
     types: [submitted]
+  # `assigned` is deliberately not a trigger: on that event
+  # `issue.author_association` describes the issue author, not the person
+  # assigning, so a collaborator assigning an outsider's issue would pass the
+  # collaborator check below with attacker-written text.
   issues:
-    types: [opened, assigned]
+    types: [opened]
 
 permissions:
   contents: read
@@ -47,10 +51,17 @@ jobs:
       )
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Least privilege: this workflow files issues and comments, which needs no
+    # push access. Raise `contents` to `write` only if you want @claude to push
+    # branches and commits.
     permissions:
-      contents: write
+      contents: read
       issues: write
       pull-requests: write
+      # Required by claude-code-action to exchange the job's OIDC token for the
+      # Claude GitHub App token; that exchange is what makes comments and
+      # issues show as `claude[bot]`. It grants no access to cloud providers
+      # unless a cloud trust policy is configured for this repository.
       id-token: write
       actions: read
     steps:
