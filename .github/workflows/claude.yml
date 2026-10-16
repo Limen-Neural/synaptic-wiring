@@ -71,20 +71,12 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      # Keep the toolchain in lockstep with Cargo.toml `rust-version`
-      # (REVIEW.md "MSRV pin rule"); the validate job in ci.yml only scans
-      # ci.yml and coverage.yml, so update this pin by hand when MSRV moves.
-      - name: Install Rust 1.99.0
-        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88
-        with:
-          toolchain: 1.99.0
-          components: clippy, rustfmt
-
       - name: Run Claude
         uses: anthropics/claude-code-action@c3d45e8e941e1b2ad7b278c57482d9c5bf1f35b3 # v1.0.99
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # Let Claude file and list issues with the App token, and run the
-          # repo's own checks from REVIEW.md before proposing changes.
+          # Only issue commands. Cargo is deliberately not allowed: it runs
+          # build.rs and test binaries from the checked-out code, which would
+          # execute untrusted PR code with the subscription token in scope.
           claude_args: |
-            --allowedTools "Bash(gh issue create:*),Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(cargo fmt:*),Bash(cargo clippy:*),Bash(cargo test:*),Bash(cargo doc:*)"
+            --allowedTools "Bash(gh issue create:*),Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue comment:*)"
