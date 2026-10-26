@@ -33,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `baseline * (baseline_stress * fatigue_amplification) * dopamine_factor`
   so near-threshold firing stays bit-identical (LIM-1490).
 
-## [0.3.0]
+## [0.3.0] - 2026-09-16
 
 `0.3.0` is the first crates.io release, published under the canonical crate
 name `synaptic-wiring` (renamed from `synaptic-mesh`; see Changed below).
@@ -302,5 +302,7 @@ First versioned history. Nothing before this tag was published or tagged.
   derivable impls, redundant borrows).
 - Fixed `cargo fmt` formatting (module ordering, debug_assert wrapping).
 
-[Unreleased]: https://github.com/Limen-Neural/synaptic-wiring/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Limen-Neural/synaptic-wiring/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Limen-Neural/synaptic-wiring/compare/v0.1.0...v0.3.0
+[0.2.0]: https://github.com/Limen-Neural/synaptic-wiring/commit/4519a021e791aef44e7f5dcfe9bf7032c2cf6e7e
 [0.1.0]: https://github.com/Limen-Neural/synaptic-wiring/releases/tag/v0.1.0
