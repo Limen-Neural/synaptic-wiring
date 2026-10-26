@@ -79,4 +79,5 @@ jobs:
           # build.rs and test binaries from the checked-out code, which would
           # execute untrusted PR code with the subscription token in scope.
           claude_args: |
+            --model claude-sonnet-5-5
             --allowedTools "Bash(gh issue create:*),Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue comment:*)"
