@@ -9,6 +9,7 @@
 mod digest;
 mod generators;
 mod graph;
+mod stats;
 mod wiring_rules;
 
 pub use digest::{
