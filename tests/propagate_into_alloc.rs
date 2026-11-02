@@ -7,50 +7,12 @@
 //! own integration-test binary so the counting `#[global_allocator]` cannot
 //! affect other test crates.
 
-use std::alloc::{GlobalAlloc, Layout, System};
-use std::sync::atomic::{AtomicU64, Ordering};
+#[path = "support/counting_alloc.rs"]
+mod counting_alloc;
 
+use counting_alloc::allocation_delta;
 use synaptic_wiring::mesh::SynapticMesh;
 use synaptic_wiring::topology::generate_small_world;
-
-struct CountingAlloc;
-
-static ALLOCATIONS: AtomicU64 = AtomicU64::new(0);
-
-unsafe impl GlobalAlloc for CountingAlloc {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        ALLOCATIONS.fetch_add(1, Ordering::SeqCst);
-        // SAFETY: forwarding to the system allocator with the same layout.
-        unsafe { System.alloc(layout) }
-    }
-
-    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        ALLOCATIONS.fetch_add(1, Ordering::SeqCst);
-        // SAFETY: forwarding to the system allocator with the same layout.
-        unsafe { System.alloc_zeroed(layout) }
-    }
-
-    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        ALLOCATIONS.fetch_add(1, Ordering::SeqCst);
-        // SAFETY: `ptr` came from this allocator; layout/new_size are forwarded.
-        unsafe { System.realloc(ptr, layout, new_size) }
-    }
-
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        // SAFETY: `ptr` came from this allocator; layout is forwarded.
-        unsafe { System.dealloc(ptr, layout) }
-    }
-}
-
-#[global_allocator]
-static GLOBAL: CountingAlloc = CountingAlloc;
-
-fn allocation_delta<R>(f: impl FnOnce() -> R) -> (R, u64) {
-    let before = ALLOCATIONS.load(Ordering::SeqCst);
-    let value = f();
-    let after = ALLOCATIONS.load(Ordering::SeqCst);
-    (value, after.saturating_sub(before))
-}
 
 #[test]
 fn reuse_path_is_allocation_free_after_new() {
