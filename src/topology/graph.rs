@@ -280,12 +280,44 @@ impl SynapticGraph {
         Ok(())
     }
 
-    /// Number of neurons in the graph.
+    /// Number of neurons in the graph, including neurons with no synapses.
+    ///
+    /// Does not allocate.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use synaptic_wiring::SynapticGraph;
+    ///
+    /// assert_eq!(SynapticGraph::new(3).neuron_count(), 3);
+    /// assert_eq!(SynapticGraph::new(0).neuron_count(), 0);
+    /// ```
     pub fn neuron_count(&self) -> usize {
         self.neuron_count
     }
 
     /// Total number of synapses (non-zero entries).
+    ///
+    /// Parallel synapses between the same pair and self-connections each
+    /// count once. Does not allocate.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use synaptic_wiring::{Polarity, SynapseDescriptor, SynapticGraph};
+    ///
+    /// let syn = |source, target| SynapseDescriptor {
+    ///     source,
+    ///     target,
+    ///     weight: 0.5,
+    ///     delay: 1,
+    ///     polarity: Polarity::Excitatory,
+    /// };
+    /// let graph = SynapticGraph::from_descriptors(3, &[syn(0, 1), syn(1, 2), syn(2, 2)])?;
+    /// assert_eq!(graph.synapse_count(), 3);
+    /// assert_eq!(SynapticGraph::new(3).synapse_count(), 0);
+    /// # Ok::<(), synaptic_wiring::MeshError>(())
+    /// ```
     pub fn synapse_count(&self) -> usize {
         self.targets.len()
     }

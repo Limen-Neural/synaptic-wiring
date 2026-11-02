@@ -14,6 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `set_gain(1.5_f32.into())`, `integrate(0.5_f32.into())`,
   `is_active(3_usize.into())`. Purely additive — the newtypes remain distinct
   types at the API boundary (LIM-1554).
+- **Topology**: `SynapticGraph::mean_out_degree() -> f64` and
+  `SynapticGraph::density() -> f64` for checking a generated graph before
+  running a simulation, without going through `to_gpu_arrays`. Both come
+  from the neuron and synapse counts the graph already holds, add no
+  storage and do not allocate. A graph with no neurons reports `0.0` for
+  both. `density` divides by `N²`, self-connections included, so it matches
+  `1.0 - sparsity()` up to `sparsity()`'s `f32` precision (and while
+  `sparsity()`'s `usize` square does not overflow, i.e. up to 65,535 neurons
+  on 32-bit targets; `density` squares in `f64`). `neuron_count` and `synapse_count` (already public)
+  now have rustdoc examples (#98, LIM-1557).
 
 ### Changed
 
