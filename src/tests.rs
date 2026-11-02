@@ -103,6 +103,76 @@ fn neuromod_neuron_no_fire_below_threshold() {
     assert!(n.v > 0.0);
 }
 
+// ── Newtype `From` conversions (LIM-1554) ─────────────────────────────────────
+//
+// Each `impl From<..>` in `router.rs` carries a rustdoc example. The coverage
+// workflow runs `cargo llvm-cov nextest`, which does not execute doctests, so
+// those examples leave the impls unmeasured. The tests below are the real
+// unit-test counterparts: they mirror each doctest assertion for assertion.
+
+#[test]
+fn synaptic_drive_from_f32_matches_doctest() {
+    let mut neuron = NeuromodNeuron::new();
+    neuron.integrate(SynapticDrive::from(0.5_f32));
+
+    // The `.into()` form is equivalent at the callsite.
+    let drive: SynapticDrive = 0.5_f32.into();
+    assert!((drive.stimulus - 0.5).abs() < 1e-6);
+    assert!((neuron.v - 0.44).abs() < 1e-6);
+}
+
+#[test]
+fn modulation_gain_from_f32_matches_doctest() {
+    let mut router = ChannelRouter::new();
+    router.set_global_gain(ModulationGain::from(1.5_f32));
+
+    // The `.into()` form is equivalent at the callsite.
+    router.set_global_gain(2.0_f32.into());
+
+    // Same newtype, same effect on the neuron primitive the router drives.
+    let mut neuron = NeuromodNeuron::new();
+    neuron.set_gain(1.5_f32.into());
+    assert!((neuron.gain - 1.5).abs() < 1e-6);
+}
+
+#[test]
+fn channel_index_from_usize_matches_doctest() {
+    let decision = RoutingDecision {
+        active_channels: vec![0, 3],
+        ..Default::default()
+    };
+
+    assert!(decision.is_active(ChannelIndex::from(3_usize)));
+    assert!(decision.is_active(3_usize.into()));
+    assert!(!decision.is_active(1_usize.into()));
+}
+
+#[test]
+fn newtype_from_impls_are_transparent_wrappers() {
+    // `From` must copy the value through, not transform it.
+    assert!((SynapticDrive::from(0.75_f32).stimulus - 0.75).abs() < 1e-6);
+    assert!((ModulationGain::from(2.5_f32).value - 2.5).abs() < 1e-6);
+    assert_eq!(ChannelIndex::from(7_usize), ChannelIndex(7));
+
+    // And the `.into()` path must set the same field the struct literal does.
+    let mut neuron = NeuromodNeuron::new();
+    neuron.set_gain(2.5_f32.into());
+    assert!((neuron.gain - 2.5).abs() < 1e-6);
+}
+
+#[test]
+fn modulation_gain_from_f32_reaches_router_neurons() {
+    // End-to-end: the `.into()` path must reach the neurons routing reads,
+    // not merely set a field that `route` ignores.
+    let mut router = ChannelRouter::new();
+    let d1 = router.route([0.5, 0.0, 0.0]).unwrap();
+    assert!(d1.is_active(ChannelIndex(0)));
+
+    router.set_global_gain(0.1_f32.into());
+    let d2 = router.route([0.5, 0.0, 0.0]).unwrap();
+    assert!(d2.is_empty(), "Reduced gain should have inhibited firing");
+}
+
 // ── Generic channel count tests ───────────────────────────────────────────────
 
 #[test]

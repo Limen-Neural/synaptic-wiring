@@ -52,9 +52,79 @@ pub struct ModulationGain {
     pub value: f32,
 }
 
+impl From<f32> for SynapticDrive {
+    /// Wraps a bare stimulus magnitude, so callsites can write
+    /// `integrate(0.5_f32.into())`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use synaptic_wiring::{NeuromodNeuron, SynapticDrive};
+    ///
+    /// let mut neuron = NeuromodNeuron::new();
+    /// neuron.integrate(SynapticDrive::from(0.5_f32));
+    ///
+    /// // The `.into()` form is equivalent at the callsite.
+    /// let drive: SynapticDrive = 0.5_f32.into();
+    /// assert!((drive.stimulus - 0.5).abs() < 1e-6);
+    /// assert!((neuron.v - 0.44).abs() < 1e-6);
+    /// ```
+    fn from(stimulus: f32) -> Self {
+        Self { stimulus }
+    }
+}
+
+impl From<f32> for ModulationGain {
+    /// Wraps a bare gain multiplier, so callsites can write
+    /// `set_gain(1.5_f32.into())`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use synaptic_wiring::{ChannelRouter, ModulationGain, NeuromodNeuron};
+    ///
+    /// let mut router = ChannelRouter::new();
+    /// router.set_global_gain(ModulationGain::from(1.5_f32));
+    ///
+    /// // The `.into()` form is equivalent at the callsite.
+    /// router.set_global_gain(2.0_f32.into());
+    ///
+    /// // Same newtype, same effect on the neuron primitive the router drives.
+    /// let mut neuron = NeuromodNeuron::new();
+    /// neuron.set_gain(1.5_f32.into());
+    /// assert!((neuron.gain - 1.5).abs() < 1e-6);
+    /// ```
+    fn from(value: f32) -> Self {
+        Self { value }
+    }
+}
+
 /// Index of one router channel, used by [`RoutingDecision::is_active`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ChannelIndex(pub usize);
+
+impl From<usize> for ChannelIndex {
+    /// Wraps a bare channel position, so callsites can write
+    /// `is_active(3_usize.into())`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use synaptic_wiring::{ChannelIndex, RoutingDecision};
+    ///
+    /// let decision = RoutingDecision {
+    ///     active_channels: vec![0, 3],
+    ///     ..Default::default()
+    /// };
+    ///
+    /// assert!(decision.is_active(ChannelIndex::from(3_usize)));
+    /// assert!(decision.is_active(3_usize.into()));
+    /// assert!(!decision.is_active(1_usize.into()));
+    /// ```
+    fn from(index: usize) -> Self {
+        Self(index)
+    }
+}
 
 /// Neuromodulatory Integrative Fixed-threshold (NIF) neuron.
 ///

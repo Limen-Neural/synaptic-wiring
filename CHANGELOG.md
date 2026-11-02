@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Router**: `From<f32>` for `SynapticDrive` and `ModulationGain`, and
+  `From<usize>` for `ChannelIndex`, so the newtype callsites can stay terse:
+  `set_gain(1.5_f32.into())`, `integrate(0.5_f32.into())`,
+  `is_active(3_usize.into())`. Purely additive — the newtypes remain distinct
+  types at the API boundary (LIM-1554).
+
 ### Changed
 
 - **MSRV**: Rust pin raised from **1.98.1** to **1.99.0** in `Cargo.toml`
