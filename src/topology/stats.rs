@@ -46,11 +46,13 @@ impl SynapticGraph {
     ///
     /// Equal to `synapse_count() / neuron_count()²`. The denominator counts
     /// self-connections because [`SynapticGraph::from_descriptors`] accepts
-    /// them, which keeps `density() == 1.0 - sparsity()` (up to the `f32`
-    /// precision of [`SynapticGraph::sparsity`]). Parallel synapses between
-    /// the same pair each count, so a multigraph can exceed `1.0`. Returns
-    /// `0.0` for a graph with no neurons. The square is taken in `f64`, so
-    /// it cannot overflow. Does not allocate.
+    /// them, so `density()` matches `1.0 - sparsity()` up to the `f32`
+    /// precision of [`SynapticGraph::sparsity`]. That only holds while
+    /// `sparsity`'s own `usize` square of the neuron count fits, which on
+    /// 32-bit targets stops above 65,535 neurons; `density` squares in `f64`,
+    /// so it cannot overflow. Parallel synapses between the same pair each
+    /// count, so a multigraph can exceed `1.0`. Returns `0.0` for a graph with
+    /// no neurons. Does not allocate.
     ///
     /// # Examples
     ///

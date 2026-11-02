@@ -19,8 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   running a simulation, without going through `to_gpu_arrays`. Both come
   from the neuron and synapse counts the graph already holds, add no
   storage and do not allocate. A graph with no neurons reports `0.0` for
-  both. `density` divides by `N²`, self-connections included, so it equals
-  `1.0 - sparsity()`. `neuron_count` and `synapse_count` (already public)
+  both. `density` divides by `N²`, self-connections included, so it matches
+  `1.0 - sparsity()` up to `sparsity()`'s `f32` precision (and while
+  `sparsity()`'s `usize` square does not overflow, i.e. up to 65,535 neurons
+  on 32-bit targets; `density` squares in `f64`). `neuron_count` and `synapse_count` (already public)
   now have rustdoc examples (#98, LIM-1557).
 
 ### Changed
