@@ -361,7 +361,8 @@ impl SynapticGraph {
     /// Each descriptor is built on the fly from the CSR edge arrays, so this
     /// does not allocate. Descriptors carry the magnitude of the stored signed
     /// weight (`weight >= 0`), so [`SynapseDescriptor::effective_weight`] gives
-    /// back the signed weight and the descriptors can be fed straight into
+    /// back the signed weight bit-for-bit (including signed zero) and the
+    /// descriptors can be fed straight into
     /// [`from_descriptors`](Self::from_descriptors). Synapses are yielded in
     /// CSR order, which for a graph built by `from_descriptors` is the order
     /// the descriptors for that source were given in.
@@ -411,7 +412,9 @@ impl SynapticGraph {
         edges.map(move |i| SynapseDescriptor {
             source,
             target: self.targets[i],
-            weight: self.weights[i].abs(),
+            // Not `abs()`: multiplying by the polarity sign keeps signed zero
+            // round-tripping through `effective_weight()` (and the digest).
+            weight: self.weights[i] * self.polarities[i].sign(),
             delay: self.delays[i],
             polarity: self.polarities[i],
         })
@@ -582,9 +585,10 @@ mod tests {
 
     #[test]
     fn outgoing_synapses_rebuild_an_equal_graph() {
-        // Deserialized graphs may store +0.0 for an inhibitory synapse; the
-        // descriptor magnitude must still be a valid non-negative weight.
-        let json = r#"{"neuron_count":3,"row_ptr":[0,2,2,3],"targets":[1,2,0],"weights":[-0.4,0.0,0.7],"delays":[1,4,2],"polarities":["Inhibitory","Inhibitory","Excitatory"]}"#;
+        // Deserialized graphs may store +0.0 for an inhibitory synapse or
+        // -0.0 for an excitatory one; the descriptor magnitude must still be
+        // valid and the signed zero must survive the rebuild (it is digested).
+        let json = r#"{"neuron_count":3,"row_ptr":[0,2,2,4],"targets":[1,2,0,1],"weights":[-0.4,0.0,0.7,-0.0],"delays":[1,4,2,3],"polarities":["Inhibitory","Inhibitory","Excitatory","Excitatory"]}"#;
         let graph: SynapticGraph = serde_json::from_str(json).unwrap();
         let descs: Vec<_> = (0..graph.neuron_count())
             .flat_map(|n| graph.outgoing_synapses(n))
@@ -592,6 +596,7 @@ mod tests {
         assert_eq!(descs.len(), graph.synapse_count());
         let rebuilt = SynapticGraph::from_descriptors(graph.neuron_count(), &descs).unwrap();
         assert_eq!(rebuilt, graph);
+        assert_eq!(rebuilt.topology_digest(), graph.topology_digest());
     }
 
     #[test]
