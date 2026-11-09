@@ -12,8 +12,8 @@ impl SynapticGraph {
     /// Mean number of outgoing synapses per neuron, as `f64`.
     ///
     /// Equal to `synapse_count() / neuron_count()`. Returns `0.0` for a graph
-    /// with no neurons. This is the `f64` counterpart of
-    /// [`SynapticGraph::mean_degree`], which returns `f32`. Does not allocate.
+    /// with no neurons. Replaces the deprecated `f32`
+    /// [`SynapticGraph::mean_degree`]. Does not allocate.
     ///
     /// # Examples
     ///
@@ -148,6 +148,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn mean_out_degree_agrees_with_f32_mean_degree() {
         let descs = [syn(0, 1), syn(0, 2), syn(1, 3), syn(2, 3), syn(3, 0)];
         let g = SynapticGraph::from_descriptors(4, &descs).expect("valid descriptors");

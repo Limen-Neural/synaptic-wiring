@@ -25,6 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on 32-bit targets; `density` squares in `f64`). `neuron_count` and
   `synapse_count` (already public) now have rustdoc examples (#98, LIM-1557).
 
+### Deprecated
+
+- **Topology**: `SynapticGraph::mean_degree() -> f32` and
+  `SynapticMesh::mean_degree() -> f32` duplicate the new
+  `SynapticGraph::mean_out_degree() -> f64`. Migrate `graph.mean_degree()` to
+  `graph.mean_out_degree()` and `mesh.mean_degree()` to
+  `mesh.graph().mean_out_degree()` (LIM-1557).
+
 ### Changed
 
 - **MSRV**: Rust pin raised from **1.98.1** to **1.99.0** in `Cargo.toml`
