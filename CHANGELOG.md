@@ -22,8 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   both. `density` divides by `N²`, self-connections included, so it matches
   `1.0 - sparsity()` up to `sparsity()`'s `f32` precision (and while
   `sparsity()`'s `usize` square does not overflow, i.e. up to 65,535 neurons
-  on 32-bit targets; `density` squares in `f64`). `neuron_count` and `synapse_count` (already public)
-  now have rustdoc examples (#98, LIM-1557).
+  on 32-bit targets; `density` squares in `f64`). `neuron_count` and
+  `synapse_count` (already public) now have rustdoc examples (#98, LIM-1557).
 
 ### Changed
 
