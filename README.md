@@ -269,7 +269,10 @@ assert_eq!(decision.active_channels, vec![3]);
 [`examples/mesh_with_router.rs`](examples/mesh_with_router.rs) is a runnable
 orientation loop: a layered `SynapticGraph`, a `SynapticMesh`, a
 `ChannelRouter` sized to the output layer, and one `NeuromodNeuron` per
-channel driven by that tick's currents. It prints routing decisions for
+channel driven by that tick's currents. `NeuromodNeuron` here is the public
+router primitive used directly, not a general-purpose neuron model. The
+input spikes stay constant: the graph is one feed-forward hop, so output
+spikes have nowhere to go. It prints routing decisions for
 three ticks and stops there.
 
 ```bash

@@ -41,6 +41,9 @@ fn main() {
         })
         .collect();
 
+    // One feed-forward hop: the output layer has no outgoing synapses, so
+    // spikes there never come back into `propagate`. The same input is
+    // presented on every tick.
     let mut spikes = vec![false; neuron_count];
     for spike in spikes.iter_mut().take(INPUTS) {
         *spike = true;
@@ -68,13 +71,5 @@ fn main() {
             "tick {tick}: active_channels={:?} firing_rates={:?} readout_spikes={fired:?}",
             decision.active_channels, decision.firing_rates,
         );
-
-        // The mesh does not choose the next spikes. Hold the input layer
-        // on (a stand-in for an ongoing stimulus) and let every later
-        // neuron fire when its current crosses a threshold.
-        spikes = currents.iter().map(|&current| current > 0.2).collect();
-        for spike in spikes.iter_mut().take(INPUTS) {
-            *spike = true;
-        }
     }
 }
