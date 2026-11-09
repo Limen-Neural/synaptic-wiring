@@ -574,10 +574,10 @@ mod tests {
             }],
         )
         .unwrap();
-        assert_eq!(graph.outgoing_synapses(1).count(), 0);
-        assert_eq!(graph.outgoing_synapses(2).count(), 0);
-        assert_eq!(graph.outgoing_synapses(usize::MAX).count(), 0);
-        assert_eq!(SynapticGraph::new(0).outgoing_synapses(0).count(), 0);
+        let empty = SynapticGraph::new(0);
+        for (g, id) in [(&graph, 1), (&graph, 2), (&graph, usize::MAX), (&empty, 0)] {
+            assert_eq!(g.outgoing_synapses(id).count(), 0, "neuron {id}");
+        }
     }
 
     #[test]
