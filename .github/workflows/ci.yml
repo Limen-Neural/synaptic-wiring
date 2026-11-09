@@ -164,7 +164,7 @@ jobs:
           # tree would make the `cargo package` step below fail as dirty.
           listing="${RUNNER_TEMP:-/tmp}/packaged-files.txt"
           cargo package --locked --list | tee "$listing"
-          allowed='^(\.cargo_vcs_info\.json|CHANGELOG\.md|Cargo\.lock|Cargo\.toml|Cargo\.toml\.orig|LICENSE-[A-Za-z0-9.-]+|README\.md|(src|tests|benches)/.+\.rs)$'
+          allowed='^(\.cargo_vcs_info\.json|CHANGELOG\.md|Cargo\.lock|Cargo\.toml|Cargo\.toml\.orig|LICENSE-[A-Za-z0-9.-]+|README\.md|(src|tests|benches|examples)/.+\.rs)$'
           unexpected=$(grep -Ev "$allowed" "$listing" || true)
           if [ -n "$unexpected" ]; then
             echo "ERROR: unexpected files in the packaged crate — add them to" >&2

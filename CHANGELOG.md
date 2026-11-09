@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Examples**: `examples/mesh_with_router.rs` builds a layered graph, wraps
+  it in `SynapticMesh`, and feeds each tick's output-layer currents to a
+  `ChannelRouter` plus one `NeuromodNeuron` per channel. Run it with
+  `cargo run --example mesh_with_router`. The README links it from
+  [Where to start](README.md#where-to-start) (LIM-1562).
 - **Router**: `From<f32>` for `SynapticDrive` and `ModulationGain`, and
   `From<usize>` for `ChannelIndex`, so the newtype callsites can stay terse:
   `set_gain(1.5_f32.into())`, `integrate(0.5_f32.into())`,

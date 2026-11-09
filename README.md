@@ -70,6 +70,7 @@ crate. See [Crate boundary](#crate-boundary).
 | Store a big sparse weight matrix / upload to a GPU | `SparseSynapticMap`, `SynapticMesh::to_gpu_arrays` | [Core Capabilities](#core-capabilities) |
 | Record topology in a manifest / compare two graphs | `SynapticGraph::topology_digest` | [Topology digest](#topology-digest) |
 | Pick a few active channels out of many inputs | `ChannelRouter` | [Generic Channel Router](#generic-channel-router) |
+| See mesh and router in one loop | `examples/mesh_with_router.rs` | [Worked example](#worked-example-mesh-and-router) |
 
 ## Installation
 
@@ -262,6 +263,21 @@ let decision = router.route([0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0]).unwrap();
 
 assert_eq!(decision.active_channels, vec![3]);
 ```
+
+## Worked example: mesh and router
+
+[`examples/mesh_with_router.rs`](examples/mesh_with_router.rs) is a runnable
+orientation loop: a layered `SynapticGraph`, a `SynapticMesh`, a
+`ChannelRouter` sized to the output layer, and one `NeuromodNeuron` per
+channel driven by that tick's currents. It prints routing decisions for
+three ticks and stops there.
+
+```bash
+cargo run --example mesh_with_router
+```
+
+The example uses only this crate. The mesh still does not call the router;
+the example is the code that connects them.
 
 ## Adaptation-Aware Routing
 
