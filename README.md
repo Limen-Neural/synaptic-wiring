@@ -271,9 +271,9 @@ orientation loop: a layered `SynapticGraph`, a `SynapticMesh`, a
 `ChannelRouter` sized to the output layer, and one `NeuromodNeuron` per
 channel driven by that tick's currents. `NeuromodNeuron` here is the public
 router primitive used directly, not a general-purpose neuron model. The
-input spikes stay constant: the graph is one feed-forward hop, so output
-spikes have nowhere to go. It prints routing decisions for
-three ticks and stops there.
+graph is input → hidden → output. A threshold on this tick's currents
+picks the next spikes, so the hidden layer reaches the router one tick
+later. It prints routing decisions for three ticks and stops there.
 
 ```bash
 cargo run --example mesh_with_router
