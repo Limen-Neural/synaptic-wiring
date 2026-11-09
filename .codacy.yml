@@ -3,5 +3,6 @@
 ---
 exclude_paths:
   - ".github/workflows/**"
-  # Thin System-forwarding GlobalAlloc used only to count heap allocations.
-  - "tests/propagate_into_alloc.rs"
+  # Thin System-forwarding GlobalAlloc used only to count heap allocations,
+  # shared by the allocation-guard test binaries.
+  - "tests/support/counting_alloc.rs"

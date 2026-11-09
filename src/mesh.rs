@@ -469,6 +469,11 @@ impl SynapticMesh {
     }
 
     /// Mean out-degree of the network.
+    #[deprecated(
+        since = "0.4.0",
+        note = "use `mesh.graph().mean_out_degree()`, which returns `f64`"
+    )]
+    #[allow(deprecated)]
     pub fn mean_degree(&self) -> f32 {
         self.graph.mean_degree()
     }
