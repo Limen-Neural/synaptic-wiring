@@ -34,7 +34,9 @@
 //! 5. [`sparse::SparseSynapticMap`] or [`SynapticMesh::to_gpu_arrays`] when
 //!    you need the weights as flat CSR arrays.
 //! 6. [`router::ChannelRouter`] only if you also want a sparse channel
-//!    classifier; it is independent of the mesh and safe to ignore.
+//!    classifier; it is independent of the mesh and safe to ignore. The
+//!    `mesh_with_router` example (`cargo run --example mesh_with_router`)
+//!    shows one way to feed mesh currents into it.
 //!
 //! [`generate_random`]: topology::generate_random
 //! [`generate_scale_free`]: topology::generate_scale_free
