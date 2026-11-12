@@ -528,6 +528,8 @@ mod tests {
         assert!(inh_edge.1 < 0.0);
     }
 
+    /// Outgoing synapses are yielded as descriptors in CSR order, with the
+    /// descriptor's source set to the queried neuron.
     #[test]
     fn outgoing_synapses_yields_source_descriptors_in_order() {
         let descs = vec![
@@ -564,6 +566,8 @@ mod tests {
         }
     }
 
+    /// Unconnected neurons, out-of-range ids and `usize::MAX` all yield an
+    /// empty iterator without panicking.
     #[test]
     fn outgoing_synapses_empty_for_unconnected_and_out_of_range() {
         let graph = SynapticGraph::from_descriptors(
@@ -583,6 +587,8 @@ mod tests {
         }
     }
 
+    /// Descriptors rebuilt via `from_descriptors` produce an equal graph with
+    /// the same topology digest, preserving signed-zero weights.
     #[test]
     fn outgoing_synapses_rebuild_an_equal_graph() {
         // Deserialized graphs may store +0.0 for an inhibitory synapse or

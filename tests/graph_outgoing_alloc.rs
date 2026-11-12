@@ -15,6 +15,8 @@ use std::hint::black_box;
 use counting_alloc::allocation_delta;
 use synaptic_wiring::topology::{SynapticGraph, generate_small_world};
 
+/// Iterating `outgoing_synapses` over every neuron performs zero heap
+/// allocations, including for empty and unconnected graphs.
 #[test]
 fn outgoing_synapses_does_not_allocate() {
     let generated = generate_small_world(64, 6, 0.2, 8, 0.2).unwrap();
