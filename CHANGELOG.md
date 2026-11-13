@@ -31,6 +31,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `sparsity()`'s `usize` square does not overflow, i.e. up to 65,535 neurons
   on 32-bit targets; `density` squares in `f64`). `neuron_count` and
   `synapse_count` (already public) now have rustdoc examples (#98, LIM-1557).
+- **Topology**: `SynapticGraph::outgoing_synapses(neuron_id)` iterates one
+  neuron's outgoing synapses as `SynapseDescriptor`s, built on the fly from
+  the CSR edge arrays without allocating. Descriptor `weight` is the
+  non-negative magnitude, so the output feeds straight back into
+  `from_descriptors`. Unconnected and out-of-range neurons yield an empty
+  iterator instead of panicking. The existing tuple-returning `outgoing`
+  is unchanged and now documents that it panics on an out-of-range source
+  (#99, LIM-1558).
 
 ### Deprecated
 

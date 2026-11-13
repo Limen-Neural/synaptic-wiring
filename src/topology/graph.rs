@@ -332,7 +332,14 @@ impl SynapticGraph {
     }
 
     /// Iterate over all outgoing synapses from `source`.
-    /// Returns `(target, weight, delay, polarity)` tuples.
+    /// Returns `(target, weight, delay, polarity)` tuples, where `weight` is
+    /// the signed CSR weight.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `source >= neuron_count()`. Use
+    /// [`outgoing_synapses`](Self::outgoing_synapses) for a non-panicking
+    /// iterator over [`SynapseDescriptor`]s.
     pub fn outgoing(
         &self,
         source: usize,
@@ -346,6 +353,70 @@ impl SynapticGraph {
                 self.delays[i],
                 self.polarities[i],
             )
+        })
+    }
+
+    /// Iterate over the outgoing synapses of `neuron_id` as [`SynapseDescriptor`]s.
+    ///
+    /// Each descriptor is built on the fly from the CSR edge arrays, so this
+    /// does not allocate. Descriptors carry the magnitude of the stored signed
+    /// weight (`weight >= 0`), so [`SynapseDescriptor::effective_weight`] gives
+    /// back the signed weight bit-for-bit (including signed zero) and the
+    /// descriptors can be fed straight into
+    /// [`from_descriptors`](Self::from_descriptors). Synapses are yielded in
+    /// CSR order, which for a graph built by `from_descriptors` is the order
+    /// the descriptors for that source were given in.
+    ///
+    /// A neuron with no outgoing synapses and an out-of-range `neuron_id`
+    /// (`neuron_id >= neuron_count()`) both yield an empty iterator; this
+    /// method never panics.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use synaptic_wiring::{Polarity, SynapseDescriptor, SynapticGraph};
+    ///
+    /// let exc = SynapseDescriptor {
+    ///     source: 0,
+    ///     target: 1,
+    ///     weight: 0.5,
+    ///     delay: 2,
+    ///     polarity: Polarity::Excitatory,
+    /// };
+    /// let inh = SynapseDescriptor {
+    ///     target: 2,
+    ///     weight: 0.25,
+    ///     polarity: Polarity::Inhibitory,
+    ///     ..exc
+    /// };
+    /// let graph = SynapticGraph::from_descriptors(3, &[exc, inh])?;
+    ///
+    /// for syn in graph.outgoing_synapses(0) {
+    ///     println!("{} -> {} after {} ticks", syn.source, syn.target, syn.delay);
+    /// }
+    /// assert!(graph.outgoing_synapses(0).eq([exc, inh]));
+    /// assert_eq!(graph.outgoing_synapses(2).count(), 0); // no outgoing synapses
+    /// assert_eq!(graph.outgoing_synapses(3).count(), 0); // out of range
+    /// # Ok::<(), synaptic_wiring::MeshError>(())
+    /// ```
+    pub fn outgoing_synapses(
+        &self,
+        neuron_id: usize,
+    ) -> impl Iterator<Item = SynapseDescriptor> + '_ {
+        // A descriptor can only name a `NeuronId` source; an id that does not
+        // fit one is treated as out of range.
+        let (source, edges) = match (NeuronId::try_from(neuron_id), self.row_ptr.get(neuron_id..)) {
+            (Ok(source), Some(&[start, end, ..])) => (source, start..end),
+            _ => (0, 0..0),
+        };
+        edges.map(move |i| SynapseDescriptor {
+            source,
+            target: self.targets[i],
+            // Not `abs()`: multiplying by the polarity sign keeps signed zero
+            // round-tripping through `effective_weight()` (and the digest).
+            weight: self.weights[i] * self.polarities[i].sign(),
+            delay: self.delays[i],
+            polarity: self.polarities[i],
         })
     }
 
@@ -455,6 +526,83 @@ mod tests {
             .find(|(_, _, _, p)| *p == Polarity::Inhibitory)
             .unwrap();
         assert!(inh_edge.1 < 0.0);
+    }
+
+    /// Outgoing synapses are yielded as descriptors in CSR order, with the
+    /// descriptor's source set to the queried neuron.
+    #[test]
+    fn outgoing_synapses_yields_source_descriptors_in_order() {
+        let descs = vec![
+            SynapseDescriptor {
+                source: 1,
+                target: 0,
+                weight: 0.5,
+                delay: 2,
+                polarity: Polarity::Excitatory,
+            },
+            SynapseDescriptor {
+                source: 0,
+                target: 2,
+                weight: 0.15,
+                delay: 1,
+                polarity: Polarity::Inhibitory,
+            },
+            SynapseDescriptor {
+                source: 0,
+                target: 1,
+                weight: 0.9,
+                delay: 3,
+                polarity: Polarity::Inhibitory,
+            },
+        ];
+        let graph = SynapticGraph::from_descriptors(3, &descs).unwrap();
+
+        let from_0: Vec<_> = graph.outgoing_synapses(0).collect();
+        assert_eq!(from_0, [descs[1], descs[2]]);
+        let from_1: Vec<_> = graph.outgoing_synapses(1).collect();
+        assert_eq!(from_1, [descs[0]]);
+        for syn in &from_0 {
+            assert!(syn.effective_weight() < 0.0);
+        }
+    }
+
+    /// Unconnected neurons, out-of-range ids and `usize::MAX` all yield an
+    /// empty iterator without panicking.
+    #[test]
+    fn outgoing_synapses_empty_for_unconnected_and_out_of_range() {
+        let graph = SynapticGraph::from_descriptors(
+            2,
+            &[SynapseDescriptor {
+                source: 0,
+                target: 1,
+                weight: 0.5,
+                delay: 1,
+                polarity: Polarity::Excitatory,
+            }],
+        )
+        .unwrap();
+        let empty = SynapticGraph::new(0);
+        for (g, id) in [(&graph, 1), (&graph, 2), (&graph, usize::MAX), (&empty, 0)] {
+            assert_eq!(g.outgoing_synapses(id).count(), 0, "neuron {id}");
+        }
+    }
+
+    /// Descriptors rebuilt via `from_descriptors` produce an equal graph with
+    /// the same topology digest, preserving signed-zero weights.
+    #[test]
+    fn outgoing_synapses_rebuild_an_equal_graph() {
+        // Deserialized graphs may store +0.0 for an inhibitory synapse or
+        // -0.0 for an excitatory one; the descriptor magnitude must still be
+        // valid and the signed zero must survive the rebuild (it is digested).
+        let json = r#"{"neuron_count":3,"row_ptr":[0,2,2,4],"targets":[1,2,0,1],"weights":[-0.4,0.0,0.7,-0.0],"delays":[1,4,2,3],"polarities":["Inhibitory","Inhibitory","Excitatory","Excitatory"]}"#;
+        let graph: SynapticGraph = serde_json::from_str(json).unwrap();
+        let descs: Vec<_> = (0..graph.neuron_count())
+            .flat_map(|n| graph.outgoing_synapses(n))
+            .collect();
+        assert_eq!(descs.len(), graph.synapse_count());
+        let rebuilt = SynapticGraph::from_descriptors(graph.neuron_count(), &descs).unwrap();
+        assert_eq!(rebuilt, graph);
+        assert_eq!(rebuilt.topology_digest(), graph.topology_digest());
     }
 
     #[test]
