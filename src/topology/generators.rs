@@ -23,10 +23,11 @@ use crate::types::{Polarity, SynapseDescriptor};
 /// Simple deterministic hash from two indices — produces a value in [0, 1).
 /// Uses a combination of golden-ratio fractional hashing and bit mixing.
 ///
-/// `GOLDEN` is `std::f64::consts::GOLDEN_RATIO` (stabilized in Rust 1.94);
-/// kept as a local const so the MSRV stays below that.
+/// `GOLDEN` is `std::f64::consts::GOLDEN_RATIO` (φ ≈ 1.618…, stabilized in
+/// Rust 1.94); kept as a local const — bit-identical to the std value — so
+/// the MSRV stays below that.
 fn hash_pair(a: usize, b: usize) -> f32 {
-    const GOLDEN: f64 = 0.618_033_988_749_895;
+    const GOLDEN: f64 = 1.618_033_988_749_895;
     const SILVER: f64 = 2.414_213_562_373_095;
     let mixed = (a as f64 * GOLDEN + b as f64 * SILVER) % 1.0;
     mixed.abs() as f32

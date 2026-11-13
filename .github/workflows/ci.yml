@@ -177,6 +177,11 @@ jobs:
       - name: cargo test on MSRV
         run: cargo "+${{ steps.msrv.outputs.version }}" test --locked --all-features
 
+      # Release mode strips debug_assert!, so bounds checks must still
+      # reject bad input on the MSRV too (same reason as the validate job).
+      - name: cargo test on MSRV (release profile)
+        run: cargo "+${{ steps.msrv.outputs.version }}" test --locked --release --all-features
+
   package:
     name: Package (crates.io dry-run)
     runs-on: ubuntu-latest
