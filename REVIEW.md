@@ -4,25 +4,38 @@ These commands are the **human quality bar** beyond GitHub Actions.
 Run them before claiming a PR is ready when the change touches `src/`,
 `Cargo.toml`, or public APIs.
 
-## MSRV pin rule
+## MSRV / toolchain split
 
-`Cargo.toml` `rust-version`, `rust-toolchain.toml` `channel`, the README's
-**MSRV** line, every `toolchain:` /
-`rust-version:` pin in `.github/workflows/ci.yml` (the toolchain install,
-the packaging job, and the `cargo-deny` action) and
-`.github/workflows/coverage.yml` must stay **identical** (currently
-**1.99.0**). The `validate` job in `ci.yml` reads those workflow pins and
-fails if they drift (issue #35 / LIM-1042).
+Two different Rust versions are tracked on purpose (issue #106, sweep
+Limen-Neural/neuromod#214):
 
-To bump MSRV:
+- **`Cargo.toml` `rust-version` = true MSRV.** The oldest rustc that
+  actually builds the crate, measured with `cargo +<ver> check --all-targets
+  --all-features` (currently **1.85**, the edition 2024 floor). It must be
+  **≤** the dev toolchain channel. Lower it when code stops needing newer
+  std APIs; never raise it just to match the toolchain.
+- **Dev/CI toolchain pin = 1.99.0.** `rust-toolchain.toml` `channel`, every
+  `toolchain:` / `rust-version:` pin in `.github/workflows/ci.yml` (the
+  toolchain installs, the packaging job, and the `cargo-deny` action) and
+  `.github/workflows/coverage.yml` stay identical to each other (currently
+  **1.99.0**) — but **not** to `rust-version`. The `validate` job in
+  `ci.yml` checks the dev pins agree with each other, that they are ≥
+  `rust-version`, and that the README's MSRV line matches `rust-version`.
 
-1. Set the new version in Cargo.toml, rust-toolchain.toml, README.md,
-   ci.yml, and coverage.yml.
-2. Run the mandatory commands below on that toolchain
-   (`rustup run <ver> cargo test --locked`, etc.).
-3. Confirm GitHub Actions is green.
+The dedicated `msrv` job in `ci.yml` reads `rust-version` out of
+`Cargo.toml` at run time and runs `cargo check` / `cargo test` on exactly
+that toolchain, so lowering the MSRV does not require touching CI pins.
 
-Do not bump only one pin.
+To change either pin:
+
+- **Lower/raise the MSRV**: set `rust-version` in `Cargo.toml`, update the
+  README **MSRV** line, verify with `cargo +<ver> check/test` on that
+  toolchain, and let the `msrv` CI job confirm it. The dev pins do not move.
+- **Bump the dev toolchain**: set the new version in `rust-toolchain.toml`,
+  every `toolchain:`/`rust-version:` pin in `ci.yml` and `coverage.yml`,
+  and run the mandatory commands below on that toolchain
+  (`rustup run <ver> cargo test --locked`, etc.). Do not lower `rust-version`
+  unless the code genuinely requires it.
 
 ## Build profiles
 

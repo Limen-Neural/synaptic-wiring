@@ -23,9 +23,9 @@ cargo package --locked --list                    # must match the allowlist in t
 - Long checkpoint fuzz run: `cargo test --locked --test checkpoint_resume resume_equivalence_nightly -- --ignored` (`CHECKPOINT_RESUME_CASES=50000` to scale; persist failing seeds in `REGRESSION_SEEDS`).
 - Coverage CI uses `cargo llvm-cov nextest` with the `ci` profile in `.config/nextest.toml`.
 
-## MSRV pin rule
+## MSRV / toolchain split
 
-The Rust version must be identical in `Cargo.toml` `rust-version`, `rust-toolchain.toml`, the README's `MSRV` line, and every `toolchain:` / `rust-version:` pin in `ci.yml` and `coverage.yml`. The `validate` job fails on drift. Never bump only one (see `REVIEW.md`).
+`Cargo.toml` `rust-version` is the **true measured MSRV** (currently 1.85) and may be lower than the dev toolchain pin. `rust-toolchain.toml`, the README's `MSRV` line (which must match `rust-version`), and every `toolchain:` / `rust-version:` pin in `ci.yml` and `coverage.yml` are the **dev toolchain** (currently 1.99.0); those must agree with each other and be ≥ `rust-version`. A dedicated `msrv` CI job reads `rust-version` from Cargo.toml at run time. Never bump only one side (see `REVIEW.md`).
 
 ## Architecture
 

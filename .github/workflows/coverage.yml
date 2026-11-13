@@ -22,8 +22,9 @@ jobs:
         with:
           persist-credentials: false
 
-      # Keep in lockstep with rust-toolchain.toml / Cargo.toml rust-version / ci.yml
-      # (MSRV pin rule / #35). Do not invent a second toolchain here.
+      # Keep in lockstep with rust-toolchain.toml / ci.yml dev toolchain
+      # pins. This is the dev toolchain, not the MSRV — Cargo.toml
+      # `rust-version` may be lower (REVIEW.md "MSRV / toolchain split").
       - name: Install Rust 1.99.0
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
         with:
