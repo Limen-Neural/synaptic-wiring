@@ -29,8 +29,11 @@ that toolchain, so lowering the MSRV does not require touching CI pins.
 To change either pin:
 
 - **Lower/raise the MSRV**: set `rust-version` in `Cargo.toml`, update the
-  README **MSRV** line, verify with `cargo +<ver> check/test` on that
-  toolchain, and let the `msrv` CI job confirm it. The dev pins do not move.
+  README **MSRV** line, verify with `cargo +<ver> check` / `cargo +<ver>
+  test` on that toolchain, and let the `msrv` CI job confirm it. The dev
+  pins do not move — unless you raise `rust-version` above the dev
+  channel, in which case bump the dev pins in the same change (CI
+  requires toolchain ≥ rust-version).
 - **Bump the dev toolchain**: set the new version in `rust-toolchain.toml`,
   every `toolchain:`/`rust-version:` pin in `ci.yml` and `coverage.yml`,
   and run the mandatory commands below on that toolchain

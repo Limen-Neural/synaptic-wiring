@@ -25,7 +25,7 @@ cargo package --locked --list                    # must match the allowlist in t
 
 ## MSRV / toolchain split
 
-`Cargo.toml` `rust-version` is the **true measured MSRV** (currently 1.85). The README's `MSRV` line must match `rust-version`. `rust-toolchain.toml` and every `toolchain:` / `rust-version:` pin in `ci.yml` and `coverage.yml` are the **dev toolchain** (currently 1.99.0); those must agree with each other and be ≥ `rust-version`. A dedicated `msrv` CI job reads `rust-version` from Cargo.toml at run time. Never bump only one side (see `REVIEW.md`).
+`Cargo.toml` `rust-version` is the **true measured MSRV** (currently 1.85). The README's `MSRV` line must match `rust-version`. `rust-toolchain.toml` and every `toolchain:` / `rust-version:` pin in `ci.yml` and `coverage.yml` are the **dev toolchain** (currently 1.99.0); those must agree with each other and be ≥ `rust-version`. A dedicated `msrv` CI job reads `rust-version` from Cargo.toml at run time. Each pin set must stay internally consistent: the README must match `rust-version`, and the toolchain pins must match each other (see `REVIEW.md`).
 
 ## Architecture
 

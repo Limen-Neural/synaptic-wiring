@@ -3,8 +3,9 @@ name = "synaptic-wiring"
 version = "0.3.0"
 edition = "2024"
 # True measured MSRV (edition 2024 floor is 1.85; verified with
-# `cargo +1.85.0 check/test --all-targets --all-features`). Independent of
-# the dev toolchain pin — see REVIEW.md "MSRV / toolchain split".
+# `cargo +1.85.0 check --all-targets --all-features` and
+# `cargo +1.85.0 test --locked --all-features`). Independent of the dev
+# toolchain pin — see REVIEW.md "MSRV / toolchain split".
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
 description = "SNN wiring, topology, temporal delays, sparse connectivity, and routing infrastructure for neuromorphic computing."
