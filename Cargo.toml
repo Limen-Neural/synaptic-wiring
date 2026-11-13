@@ -2,9 +2,11 @@
 name = "synaptic-wiring"
 version = "0.3.0"
 edition = "2024"
-# Keep identical to rust-toolchain.toml `channel` and the CI / coverage
-# workflow `toolchain:` pins (see REVIEW.md "MSRV pin rule").
-rust-version = "1.99.0"
+# True measured MSRV (edition 2024 floor is 1.85; verified with
+# `cargo +1.85.0 check --all-targets --all-features` and
+# `cargo +1.85.0 test --locked --all-features`). Independent of the dev
+# toolchain pin — see REVIEW.md "MSRV / toolchain split".
+rust-version = "1.85"
 license = "MIT OR Apache-2.0"
 description = "SNN wiring, topology, temporal delays, sparse connectivity, and routing infrastructure for neuromorphic computing."
 authors = ["Raul Cardenas Montoya <montoyaraul34@gmail.com>"]

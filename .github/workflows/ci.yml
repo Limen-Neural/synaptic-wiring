@@ -24,15 +24,16 @@ jobs:
         with:
           persist-credentials: false
 
-      # Keep Cargo.toml rust-version, rust-toolchain.toml channel, and this
-      # job's toolchain: string identical (MSRV single source of truth — #35).
+      # Dev/CI toolchain pins (this job, package, cargo-deny, coverage,
+      # rust-toolchain.toml) must agree with each other and be >= the true
+      # MSRV in Cargo.toml `rust-version`; the two may differ (#106).
       - name: Install Rust 1.99.0
         uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88
         with:
           toolchain: 1.99.0
           components: clippy, rustfmt
 
-      - name: Verify MSRV pins agree
+      - name: Verify toolchain pins agree and cover the MSRV
         # Git Bash: grep/sed and the here-string must run on Windows too.
         shell: bash
         run: |
@@ -41,8 +42,11 @@ jobs:
           cargo_rv=$(grep -m1 '^rust-version' Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/' | strip_cr)
           toolchain_ch=$(grep -m1 '^channel' rust-toolchain.toml | sed -E 's/.*"([^"]+)".*/\1/' | strip_cr)
           # Every `toolchain:` / `rust-version:` pin in ci.yml and coverage.yml
-          # must match Cargo.toml, so a job added later (or a partial bump)
-          # cannot introduce a second, silently diverging Rust version.
+          # is a *dev toolchain* pin and must match rust-toolchain.toml's
+          # channel, so a job added later (or a partial bump) cannot
+          # introduce a second, silently diverging Rust version. The `msrv`
+          # job below deliberately has no literal pin — it reads
+          # `rust-version` from Cargo.toml at run time.
           # Values are captured verbatim — `nightly`, `stable`, or
           # `${{ matrix.rust }}` is a mismatch, not something to skip over.
           workflow_pins=""
@@ -68,13 +72,30 @@ jobs:
           echo "rust-toolchain.toml channel=$toolchain_ch"
           echo "README.md MSRV=$readme_rv"
           agree=0
-          [ "$cargo_rv" = "$toolchain_ch" ] || agree=1
           [ "$cargo_rv" = "$readme_rv" ] || agree=1
           while read -r pin; do
-            [ "$pin" = "$cargo_rv" ] || agree=1
+            [ "$pin" = "$toolchain_ch" ] || agree=1
           done <<< "$workflow_pins"
+          # The dev toolchain must be at least the MSRV. Both must be plain
+          # numeric versions; compare major.minor.patch (missing patch = 0)
+          # so e.g. rust-version 1.99.1 cannot slip past channel 1.99.0.
+          if [[ "$cargo_rv" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ && \
+                "$toolchain_ch" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            msrv_le_dev=$(awk -v a="$cargo_rv" -v b="$toolchain_ch" 'BEGIN{
+              split(a, x, "."); split(b, y, ".");
+              pa = (x[3] == "" ? 0 : x[3]); pb = (y[3] == "" ? 0 : y[3]);
+              print ((x[1] < y[1]) ||
+                     (x[1] == y[1] && x[2] < y[2]) ||
+                     (x[1] == y[1] && x[2] == y[2] && pa <= pb)) ? 1 : 0 }')
+            [ "$msrv_le_dev" = "1" ] || agree=1
+          else
+            agree=1
+          fi
           if [ "$agree" -ne 0 ]; then
-            echo "ERROR: MSRV pins disagree (all must equal Cargo.toml rust-version=$cargo_rv)." >&2
+            echo "ERROR: pin check failed — workflow toolchain pins must equal" >&2
+            echo "rust-toolchain.toml channel=$toolchain_ch, README MSRV must equal" >&2
+            echo "Cargo.toml rust-version=$cargo_rv, and the dev toolchain must be" >&2
+            echo ">= rust-version (REVIEW.md \"MSRV / toolchain split\")." >&2
             exit 1
           fi
 
@@ -125,6 +146,51 @@ jobs:
       # harness in `benches/` without running it (LIM-1222).
       - name: Bench compile check (bench profile)
         run: cargo bench --locked --all-features --no-run
+
+  msrv:
+    name: MSRV (rust-version)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      # The true MSRV lives in Cargo.toml `rust-version` and may be lower
+      # than the dev toolchain pin (#106). Read it at run time so lowering
+      # the MSRV never requires editing this workflow — and keep this job
+      # free of literal `toolchain:`/`rust-version:` pins, which the
+      # validate job requires to equal the dev channel.
+      - name: Read rust-version from Cargo.toml
+        id: msrv
+        shell: bash
+        run: |
+          set -euo pipefail
+          msrv=$(grep -m1 '^rust-version' Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/' | tr -d '\r')
+          # The value is interpolated into shell below — restrict it to a
+          # plain numeric version so a crafted manifest cannot inject
+          # commands into the runner.
+          if ! [[ "$msrv" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "ERROR: rust-version must be numeric (e.g. 1.85 or 1.85.0), got: $msrv" >&2
+            exit 1
+          fi
+          echo "version=$msrv" >> "$GITHUB_OUTPUT"
+
+      - name: Install MSRV toolchain
+        run: rustup toolchain install "${{ steps.msrv.outputs.version }}" --profile minimal --no-self-update
+
+      - name: cargo check on MSRV
+        run: cargo "+${{ steps.msrv.outputs.version }}" check --locked --all-targets --all-features
+
+      - name: cargo test on MSRV
+        run: cargo "+${{ steps.msrv.outputs.version }}" test --locked --all-features
+
+      # Release mode strips debug_assert!, so bounds checks must still
+      # reject bad input on the MSRV too (same reason as the validate job).
+      - name: cargo test on MSRV (release profile)
+        run: cargo "+${{ steps.msrv.outputs.version }}" test --locked --release --all-features
+
   package:
     name: Package (crates.io dry-run)
     runs-on: ubuntu-latest
@@ -135,8 +201,8 @@ jobs:
         with:
           persist-credentials: false
 
-      # Keep identical to the other Rust pins in this workflow; the
-      # "Verify MSRV pins agree" step in `validate` checks every one of them.
+      # Keep identical to the other dev toolchain pins in this workflow; the
+      # "Verify toolchain pins agree" step in `validate` checks every one.
       - name: Install Rust 1.99.0
         uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88
         with:
@@ -244,7 +310,7 @@ jobs:
         with:
           persist-credentials: false
 
-      # Keep in sync with the MSRV pin rule in REVIEW.md (issue #35).
+      # Keep in sync with the dev toolchain pin in REVIEW.md (issue #35).
       - name: cargo-deny (advisories, licenses, bans, sources)
         uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
