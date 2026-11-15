@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-`synaptic-wiring` is a small Rust library (edition 2024, published to crates.io, pre-1.0) for the connectivity layer of a spiking neural network: topology generation, per-synapse axonal delays, and tick-aligned spike delivery. It deliberately contains no neuron models, learning rules or training loops. Runtime dependencies are only `serde` and `sha2`.
+`synaptic-wiring` is a small Rust library (edition 2024, published to crates.io, pre-1.0) for the connectivity layer of a spiking neural network: topology generation, per-synapse axonal delays, and tick-aligned spike delivery. It deliberately contains no neuron models, learning rules or training loops. Runtime dependencies are only `serde` and `sha2` (plus `libm` under the no_std `alloc` feature).
 
 ## Commands
 
@@ -16,7 +16,11 @@ cargo test --locked --release --all-features     # debug_assert! stripped: bound
 RUSTDOCFLAGS="-D warnings" cargo doc --locked --all-features --no-deps --document-private-items
 cargo bench --locked --all-features --no-run     # CI only compiles the criterion bench
 cargo package --locked --list                    # must match the allowlist in the `package` job of ci.yml
+cargo test --locked --no-default-features --features alloc                                   # libm math path on the host
+cargo build --locked --no-default-features --features alloc --target thumbv7em-none-eabihf  # real no_std build (also wasm32v1-none)
 ```
+
+- **`no_std`.** Features: `std` (default) and `alloc` (no_std + heap, pulls in `libm`). Non-test code must use `core::` / `alloc::` paths and import `Vec`, `String`, `format!`, `vec!` from `alloc`; float math not in `core` (`round`, `sqrt`, `powf`) goes through the private `src/math.rs`. Tests link `std` regardless (`cfg_attr(not(any(feature = "std", test)), no_std)`).
 
 - Single test: `cargo test --locked <name_substring>`; one integration binary: `cargo test --locked --test propagate_contract`.
 - Doctests matter: the README's Rust blocks are compiled as doctests via `#[cfg(doctest)] include_str!("../README.md")` in `src/lib.rs`, so editing README examples can break `cargo test`.

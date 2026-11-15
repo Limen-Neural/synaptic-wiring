@@ -5,6 +5,8 @@
 //! Shared scalar types, measurement units, and configuration structs used
 //! across the topology, delay, and mesh modules.
 
+use alloc::{format, string::String, vec::Vec};
+
 use serde::de::{Deserializer, Error as DeError};
 use serde::{Deserialize, Serialize};
 
@@ -130,7 +132,7 @@ pub(crate) fn invalid_signed_weight_polarity_msg(weight: f32, polarity: Polarity
 /// Rejects negative or non-finite weights so deserialized descriptors keep
 /// the documented `weight >= 0` invariant that [`SynapseDescriptor::effective_weight`]
 /// relies on to apply polarity correctly.
-fn deserialize_nonnegative_weight<'de, D>(deserializer: D) -> std::result::Result<f32, D::Error>
+fn deserialize_nonnegative_weight<'de, D>(deserializer: D) -> core::result::Result<f32, D::Error>
 where
     D: Deserializer<'de>,
 {

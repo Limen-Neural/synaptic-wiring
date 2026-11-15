@@ -16,6 +16,13 @@
 //! For a 2048-neuron network with ~5% connectivity, this reduces storage from
 //! ~16 MB (dense f32) to ~800 KB (sparse), a 20× reduction.
 
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
+
 use serde::{Deserialize, Serialize};
 
 use crate::error::{MeshError, Result};

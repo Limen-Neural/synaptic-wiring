@@ -191,6 +191,79 @@ jobs:
       - name: cargo test on MSRV (release profile)
         run: cargo "+${{ steps.msrv.outputs.version }}" test --locked --release --all-features
 
+      # The no_std build must also hold on the MSRV (LIM-1561): `core` float
+      # math and `core::error::Error` availability is version-dependent.
+      - name: no_std build on MSRV
+        shell: bash
+        run: |
+          set -euo pipefail
+          tc="${{ steps.msrv.outputs.version }}"
+          rustup target add --toolchain "$tc" thumbv7em-none-eabihf wasm32v1-none
+          for target in thumbv7em-none-eabihf wasm32v1-none; do
+            cargo "+$tc" build --locked --no-default-features --features alloc --target "$target"
+          done
+
+  no-std:
+    name: no_std + alloc (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [thumbv7em-none-eabihf, wasm32v1-none]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      # Keep identical to the other dev toolchain pins in this workflow; the
+      # "Verify toolchain pins agree" step in `validate` checks every one.
+      - name: Install Rust 1.99.0
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88
+        with:
+          toolchain: 1.99.0
+          targets: ${{ matrix.target }}
+          components: clippy
+
+      - name: Cache cargo registry
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-nostd-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-nostd-
+
+      # These targets ship no `std`, so any `std::` path, std-only
+      # dependency feature or float method missing from `core` fails here
+      # (LIM-1561 / #102).
+      - name: Build no_std + alloc
+        run: cargo build --locked --no-default-features --features alloc --target ${{ matrix.target }}
+
+      - name: Build no_std + alloc (release profile)
+        run: cargo build --locked --release --no-default-features --features alloc --target ${{ matrix.target }}
+
+      # Host run of the `libm` math path: tests link `std`, the library code
+      # under test does not. Covers the topology digest goldens too.
+      - name: Clippy (alloc, host)
+        run: cargo clippy --locked --all-targets --no-default-features --features alloc -- -D warnings
+
+      - name: Test (alloc, host)
+        run: cargo test --locked --no-default-features --features alloc
+
+      - name: Neither std nor alloc is a compile error
+        shell: bash
+        run: |
+          set -euo pipefail
+          if out=$(cargo check --locked --no-default-features 2>&1); then
+            echo "ERROR: --no-default-features without alloc must not build" >&2
+            exit 1
+          fi
+          echo "$out" | grep -qF 'needs either the `std` feature' \
+            || { echo "$out" >&2; echo "ERROR: missing guided compile_error" >&2; exit 1; }
+
   package:
     name: Package (crates.io dry-run)
     runs-on: ubuntu-latest
@@ -256,11 +329,10 @@ jobs:
       - name: Publish dry-run (no upload)
         run: cargo publish --locked --dry-run
 
-      # The crate defines no features, so this trivially passes — it pins
-      # the independently-consumable shape (no default-gated native-only
-      # dependency may sneak in later without failing here).
-      - name: Check with no default features
-        run: cargo check --locked --no-default-features
+      # The no_std configuration must stay independently consumable from
+      # the packaged manifest (the `no-std` job covers real targets).
+      - name: Check with no default features (alloc)
+        run: cargo check --locked --no-default-features --features alloc
 
       # Build the packaged .crate outside the repository, so a source file
       # dropped by `exclude` (or a build that silently relies on a repo-only

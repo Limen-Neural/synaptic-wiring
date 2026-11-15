@@ -41,8 +41,14 @@
 //! IEEE signed zero (`+0.0` vs `-0.0`) is **not** collapsed: the two bit
 //! patterns digest differently, which is tested.
 
-use std::fmt;
-use std::str::FromStr;
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec::Vec,
+};
+
+use core::fmt;
+use core::str::FromStr;
 
 use serde::de::{Deserializer, Error as DeError};
 use serde::{Deserialize, Serialize, Serializer};
@@ -185,7 +191,7 @@ impl fmt::Display for TopologyDigestParseError {
     }
 }
 
-impl std::error::Error for TopologyDigestParseError {}
+impl core::error::Error for TopologyDigestParseError {}
 
 impl SynapticGraph {
     /// Deterministic, versioned digest of this graph's logical topology.

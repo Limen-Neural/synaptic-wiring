@@ -91,6 +91,20 @@ cargo test --locked
 cargo clippy --all-features -- -D warnings
 ```
 
+### `no_std` + `alloc` (LIM-1561)
+
+Code outside `#[cfg(test)]` must use `core` / `alloc` paths, not `std`. Float
+math missing from `core` (`round`, `sqrt`, `powf`, ...) goes through the
+private `math` module. Check the host `libm` path and a real `no_std` target:
+
+```bash
+cargo clippy --locked --all-targets --no-default-features --features alloc -- -D warnings
+cargo test --locked --no-default-features --features alloc
+rustup target add thumbv7em-none-eabihf wasm32v1-none
+cargo build --locked --no-default-features --features alloc --target thumbv7em-none-eabihf
+cargo build --locked --no-default-features --features alloc --target wasm32v1-none
+```
+
 ### Checkpoint resume property suite (LIM-1223)
 
 Default CI already runs this via `cargo test --locked`. The bounded profile is

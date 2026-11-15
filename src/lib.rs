@@ -12,6 +12,10 @@
 //! compactly — all deterministically, with `serde` and `sha2` as the only
 //! runtime dependencies.
 //!
+//! The crate is `no_std + alloc` capable: build with
+//! `default-features = false, features = ["alloc"]` for embedded or WASM
+//! targets that have a heap but no `std` (see the README's `no_std` section).
+//!
 //! ## Where to start
 //!
 //! 1. [`topology::generate_small_world`] (or [`generate_random`],
@@ -133,6 +137,25 @@
 //! **Winner-take-all lateral inhibition:**
 //! - Maass, W. (2000). On the computational power of winner-take-all.
 //!   *Neural Computation*, 12(11), 2519–2535.
+
+// no_std (LIM-1561 / GH#102): non-test code is `core` + `alloc` only. The
+// `std` feature (default) keeps the published build identical; `alloc`
+// builds without `std` and takes `round` / `sqrt` / `powf` from `libm`
+// (see `math`). Tests and doctests always link `std`, so `cargo test
+// --no-default-features --features alloc` exercises the `libm` math path on
+// the host; the real `no_std` compile is CI's thumbv7em-none-eabihf and
+// wasm32v1-none build.
+#![cfg_attr(not(any(feature = "std", test)), no_std)]
+
+extern crate alloc;
+
+#[cfg(not(any(feature = "std", feature = "alloc")))]
+compile_error!(concat!(
+    "synaptic-wiring needs either the `std` feature (default) or `alloc` ",
+    "for no_std targets (default-features = false, features = [\"alloc\"])",
+));
+
+mod math;
 
 // ── New modules: wiring, topology, delays ─────────────────────────────────────
 pub mod delay;
