@@ -261,7 +261,9 @@ jobs:
             echo "ERROR: --no-default-features without alloc must not build" >&2
             exit 1
           fi
-          echo "$out" | grep -qF 'needs either the `std` feature' \
+          # Here-string, not a pipe: grep -q exits early and pipefail would
+          # turn the writer's SIGPIPE into a failure.
+          grep -qF 'needs either the `std` feature' <<< "$out" \
             || { echo "$out" >&2; echo "ERROR: missing guided compile_error" >&2; exit 1; }
 
   package:
