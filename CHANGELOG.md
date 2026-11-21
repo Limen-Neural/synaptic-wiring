@@ -78,6 +78,35 @@ The wrappers add no validation: `.into()` and the struct literals carry the
 same `f32` / `usize` value through unchanged, and saved router checkpoints
 need no state migration.
 
+#### `TopologyConfig`, `ConnectionModel`, and `MeshError`
+
+`TopologyConfig` gained a `model: ConnectionModel` field (#101, LIM-1560).
+Exhaustive struct literals must either name the field or use the spread:
+
+```rust
+// 0.3.x
+let config = TopologyConfig {
+    neuron_count: 64,
+    inhibitory_fraction: 0.2,
+    max_delay: 8,
+    sparsity_threshold: 0.01,
+};
+
+// 0.4.0
+let config = TopologyConfig {
+    model: ConnectionModel::SmallWorld { k: 4, beta: 0.1 },
+    ..TopologyConfig::default()
+};
+```
+
+Configs serialized as JSON before this change still deserialize —
+`#[serde(default)]` fills `model` with `Uniform { p: 0.05 }`.
+
+`ConnectionModel` is now `#[non_exhaustive]`, so downstream `match`
+expressions need a wildcard arm. `MeshError` gained the `UnsupportedModel`
+variant; exhaustive `match`es on the error enum need the new arm or a
+wildcard.
+
 ### Added
 
 - **`no_std` support**: new `std` (default) and `alloc` features. Build with

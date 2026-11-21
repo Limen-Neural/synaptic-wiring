@@ -82,6 +82,10 @@ fn dispatch_distance_dependent_is_unsupported() {
         matches!(err, MeshError::UnsupportedModel(_)),
         "DistanceDependent has no generator, expected UnsupportedModel, got {err:?}"
     );
+    assert!(
+        err.to_string().contains("unsupported connection model"),
+        "{err}"
+    );
 }
 
 #[test]
@@ -97,5 +101,23 @@ fn dispatch_layered_rejects_size_sum_mismatch() {
     assert!(
         matches!(err, MeshError::InvalidConfig(_)),
         "layer_sizes sum != neuron_count must be InvalidConfig, got {err:?}"
+    );
+}
+
+#[test]
+fn dispatch_layered_rejects_size_sum_overflow() {
+    // usize::MAX + 2 wraps to 1 in release builds and panics in debug; a sum
+    // that cannot be represented is a mismatch, not a pass.
+    let cfg = config(
+        1,
+        ConnectionModel::Layered {
+            layer_sizes: vec![usize::MAX, 2],
+            inter_layer_p: 0.5,
+        },
+    );
+    let err = generate_from_config(&cfg).unwrap_err();
+    assert!(
+        matches!(err, MeshError::InvalidConfig(_)),
+        "overflowing layer_sizes sum must be InvalidConfig, got {err:?}"
     );
 }

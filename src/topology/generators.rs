@@ -479,7 +479,10 @@ pub fn generate_from_config(config: &TopologyConfig) -> Result<SynapticGraph> {
             layer_sizes,
             inter_layer_p,
         } => {
-            let total: usize = layer_sizes.iter().sum();
+            let total = layer_sizes
+                .iter()
+                .try_fold(0usize, |acc, &size| acc.checked_add(size))
+                .ok_or_else(|| MeshError::InvalidConfig("layer_sizes sum exceeds usize".into()))?;
             if total != n {
                 return Err(MeshError::InvalidConfig(format!(
                     "layer_sizes sum to {total} but neuron_count is {n}"
