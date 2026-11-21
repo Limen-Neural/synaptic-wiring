@@ -7,6 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Migrating from 0.3.x
+
+0.4.0 wraps the router's bare `f32` / `usize` arguments in newtypes to keep
+`router.rs` under CodeScene's primitive-obsession threshold (LIM-1490). The
+migration is mechanical: each affected call site fails to compile until the
+value is wrapped, and the `From` impls added in the same release (LIM-1554)
+reduce most fixes to a trailing `.into()`.
+
+All three newtypes are exported from the crate root:
+
+```rust
+use synaptic_wiring::{ChannelIndex, ModulationGain, NeuromodNeuron, SynapticDrive};
+```
+
+#### `NeuromodNeuron::integrate`
+
+`integrate(stimulus: f32)` now takes `SynapticDrive`:
+
+```rust
+// 0.3.x
+neuron.integrate(0.5);
+
+// 0.4.0
+neuron.integrate(SynapticDrive { stimulus: 0.5 });
+// or, via From<f32>:
+neuron.integrate(0.5_f32.into());
+```
+
+#### `set_gain` and `ChannelRouter::set_global_gain`
+
+`NeuromodNeuron::set_gain` and `ChannelRouter::set_global_gain` now take
+`ModulationGain`:
+
+```rust
+// 0.3.x
+neuron.set_gain(1.5);
+router.set_global_gain(1.5);
+
+// 0.4.0
+neuron.set_gain(ModulationGain { value: 1.5 });
+router.set_global_gain(ModulationGain { value: 1.5 });
+// or, via From<f32>:
+neuron.set_gain(1.5_f32.into());
+router.set_global_gain(1.5_f32.into());
+```
+
+#### `RoutingDecision::is_active`
+
+`is_active(channel: usize)` now takes `ChannelIndex`:
+
+```rust
+// 0.3.x
+if decision.is_active(3) { /* ... */ }
+
+// 0.4.0
+if decision.is_active(ChannelIndex(3)) { /* ... */ }
+// or, via From<usize>:
+if decision.is_active(3_usize.into()) { /* ... */ }
+```
+
+#### Unchanged APIs
+
+`ChannelRouter::route`, `route_modulated`, and `apply_feedback` keep their
+primitive signatures — `apply_feedback(channel_idx: usize, reward: f32)` in
+particular is *not* wrapped. `RoutingDecision::active_channels` also stays
+`Vec<usize>`; only the `is_active` argument changed.
+
+The wrappers add no validation: `.into()` and the struct literals carry the
+same `f32` / `usize` value through unchanged, and saved router checkpoints
+need no state migration.
+
 ### Added
 
 - **`no_std` support**: new `std` (default) and `alloc` features. Build with
