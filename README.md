@@ -28,9 +28,9 @@ The Cargo package is `synaptic-wiring` (this crate was previously named
 [`Limen-Neural/synaptic-wiring`](https://github.com/Limen-Neural/synaptic-wiring)
 (GitHub redirects the former `Limen-Neural/synaptic-mesh` URL).
 
-It is a plain library with two runtime dependencies (`serde` and `sha2`) — no
-framework, no runtime, no GPU requirement, and no assumptions about how your
-neurons integrate current.
+It is a plain library with two runtime dependencies (`serde` and `sha2`, plus
+`libm` under the no_std `alloc` feature) — no framework, no runtime, no GPU
+requirement, and no assumptions about how your neurons integrate current.
 
 **Reach for it when you need to:**
 
@@ -93,6 +93,28 @@ synaptic-wiring = { git = "https://github.com/Limen-Neural/synaptic-wiring" }
 Add `tag = "v0.3.0"` to pin a git dependency to a specific release instead of tracking `main` — see [releases](https://github.com/Limen-Neural/synaptic-wiring/releases) for the tags that exist today.
 
 **MSRV:** Rust **1.85**. Runtime dependencies: `serde`, `sha2`.
+
+### `no_std` (embedded / WASM)
+
+The crate builds without `std` on targets that have a global allocator. The
+`std` feature is on by default; turn it off and enable `alloc` instead:
+
+```toml
+[dependencies]
+synaptic-wiring = { version = "0.3", default-features = false, features = ["alloc"] }
+```
+
+- **Requires** a `#[global_allocator]` (graphs, delay rings and router state
+  are `Vec`-backed) and Rust 1.85, the same MSRV as the `std` build.
+- **`alloc` adds `libm`** for the `round` / `sqrt` / `powf` used by the
+  topology generators, which `core` does not provide at the MSRV. The default
+  `std` build does not depend on `libm`.
+- `serde` (with `alloc`) and `sha2` stay enabled, so checkpointing and the
+  [topology digest](#topology-digest) work the same. `MeshError` implements
+  `core::error::Error`.
+- CI builds `--no-default-features --features alloc` for
+  `thumbv7em-none-eabihf` and `wasm32v1-none`. Disabling both `std` and
+  `alloc` is a compile error.
 
 Contributors: see
 [REVIEW.md](https://github.com/Limen-Neural/synaptic-wiring/blob/main/REVIEW.md#build-profiles)
@@ -307,7 +329,8 @@ The one neuron-like type here, `NeuromodNeuron` in [`router`](src/router.rs), is
 
 Spikenaut-SNN uses this crate for Dale-polarity wiring and multi-channel
 routing. That is a downstream consumer, not a requirement: nothing in the API
-assumes it, and depending on `synaptic-wiring` pulls in `serde` and `sha2`.
+assumes it, and depending on `synaptic-wiring` pulls in `serde` and `sha2` (and `libm` for
+no_std `alloc` builds).
 
 ## Architecture
 

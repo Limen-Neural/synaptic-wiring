@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`no_std` support**: new `std` (default) and `alloc` features. Build with
+  `default-features = false, features = ["alloc"]` for embedded and WASM
+  targets that have an allocator but no `std`. `alloc` pulls in `libm` for
+  the generators' `round` / `sqrt` / `powf`; the default `std` build gains no
+  dependency. `serde` and `sha2` now use `default-features = false` and
+  forward `std` / `alloc`. `MeshError` implements `core::error::Error`
+  (the same trait as `std::error::Error`). CI builds the `alloc`
+  configuration for `thumbv7em-none-eabihf` and `wasm32v1-none`, on the dev
+  toolchain and the MSRV (#102, LIM-1561).
+
 - **Examples**: `examples/mesh_with_router.rs` builds a layered graph, wraps
   it in `SynapticMesh`, and feeds each tick's output-layer currents to a
   `ChannelRouter` plus one `NeuromodNeuron` per channel. Run it with
@@ -49,6 +59,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `mesh.graph().mean_out_degree()` (LIM-1557).
 
 ### Changed
+
+- **Features**: `default-features = false` without `alloc` is now a
+  compile error instead of a no-op (the crate previously had no features).
+  Add `features = ["alloc"]` to keep building (LIM-1561).
 
 - **MSRV**: `Cargo.toml` `rust-version` lowered from **1.99.0** to the
   measured **1.85** (edition 2024 floor) now that the code no longer needs

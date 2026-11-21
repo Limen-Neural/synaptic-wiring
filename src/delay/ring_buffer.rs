@@ -18,6 +18,8 @@
 //! The ring buffer has `max_delay + 1` slots, each slot is a vector of
 //! length `neuron_count` accumulating incoming synaptic current.
 
+use alloc::{format, string::String, vec, vec::Vec};
+
 use serde::de::{Deserializer, Error as DeError};
 use serde::{Deserialize, Serialize};
 
@@ -64,7 +66,7 @@ struct RawSpikeDelayBuffer {
 }
 
 impl RawSpikeDelayBuffer {
-    fn into_buffer(self) -> std::result::Result<SpikeDelayBuffer, String> {
+    fn into_buffer(self) -> core::result::Result<SpikeDelayBuffer, String> {
         validate_delay_buffer_shape(&self.slots, self.neuron_count, self.max_delay)?;
         validate_current_tick(self.current_tick, self.max_delay)?;
         Ok(SpikeDelayBuffer {
@@ -82,7 +84,7 @@ fn validate_delay_buffer_shape(
     slots: &[Vec<f32>],
     neuron_count: usize,
     max_delay: usize,
-) -> std::result::Result<(), String> {
+) -> core::result::Result<(), String> {
     let expected_depth = max_delay.checked_add(1).ok_or_else(|| {
         format!("max_delay {max_delay} + 1 overflows usize; delay buffer depth is invalid")
     })?;
@@ -117,7 +119,7 @@ fn validate_delay_buffer_shape(
 pub(crate) fn validate_current_tick(
     current_tick: u64,
     max_delay: usize,
-) -> std::result::Result<(), String> {
+) -> core::result::Result<(), String> {
     if current_tick >= usize::MAX as u64 {
         return Err("current_tick is too large for safe advancement and indexing".into());
     }
@@ -137,7 +139,7 @@ pub(crate) fn validate_current_tick(
 }
 
 impl<'de> Deserialize<'de> for SpikeDelayBuffer {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    fn deserialize<D>(deserializer: D) -> core::result::Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {

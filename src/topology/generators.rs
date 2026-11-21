@@ -14,7 +14,10 @@
 //! - Barabási, A.-L. & Albert, R. (1999). *Emergence of scaling in
 //!   random networks.* Science, 286, 509–512.
 
+use alloc::{format, vec, vec::Vec};
+
 use crate::error::{MeshError, Result};
+use crate::math;
 use crate::topology::graph::SynapticGraph;
 use crate::types::{Polarity, SynapseDescriptor};
 
@@ -44,10 +47,8 @@ fn hash_delay(src: usize, tgt: usize, max_delay: u16) -> u16 {
         return 0;
     }
     let h = hash_pair(src * 71 + 3, tgt * 37 + 11);
-    (h * max_delay as f32)
-        .round()
-        .min(max_delay as f32)
-        .max(1.0) as u16
+    // `max_delay >= 1` here, so the clamp bounds are ordered.
+    math::round(h * max_delay as f32).clamp(1.0, max_delay as f32) as u16
 }
 
 // ── Generators ────────────────────────────────────────────────────────────────
@@ -339,12 +340,12 @@ fn select_preferential_targets(new_node: usize, m: usize, degree: &[usize]) -> V
         .map(|j| {
             let weight = degree[j].max(1) as f32;
             let u = hash_pair(new_node * 113 + 59, j * 83).clamp(1e-9, 1.0 - 1e-9);
-            (u.powf(1.0 / weight), j)
+            (math::powf(u, 1.0 / weight), j)
         })
         .collect();
     scored.sort_by(|a, b| {
         b.0.partial_cmp(&a.0)
-            .unwrap_or(std::cmp::Ordering::Equal)
+            .unwrap_or(core::cmp::Ordering::Equal)
             .then(a.1.cmp(&b.1))
     });
     scored.into_iter().take(m).map(|(_, j)| j).collect()

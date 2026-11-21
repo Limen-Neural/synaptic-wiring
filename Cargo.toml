@@ -36,9 +36,25 @@ exclude = [
     "/rust-toolchain.toml",
 ]
 
+# no_std surface (LIM-1561 / GH#102). `std` (default) keeps the published
+# build identical. `alloc` is the no_std + alloc build for embedded and
+# WASM targets: the crate always needs a heap (`Vec`-backed CSR and delay
+# ring), and the generators' `round` / `sqrt` / `powf` are not in `core` at
+# the 1.85 MSRV, so `alloc` also pulls in `libm` for them. `libm` stays an
+# internal detail of `alloc` (not its own feature) so it can be dropped
+# without a breaking change once `core` grows the float math. `std` does not
+# imply `alloc`, so default users never compile `libm`. Enabling neither is a
+# guided compile error at the crate root; CI's `no_std` job builds
+# thumbv7em-none-eabihf and wasm32v1-none.
+[features]
+default = ["std"]
+std = ["serde/std", "sha2/std"]
+alloc = ["serde/alloc", "dep:libm"]
+
 [dependencies]
-serde = { version = "1.0", features = ["derive"] }
-sha2 = "0.10"
+serde = { version = "1.0", default-features = false, features = ["derive"] }
+sha2 = { version = "0.10", default-features = false }
+libm = { version = "0.2", optional = true }
 
 [dev-dependencies]
 serde_json = "1.0"

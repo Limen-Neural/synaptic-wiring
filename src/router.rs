@@ -14,6 +14,8 @@
 //! need to pick a few active channels out of many inputs; ignore it entirely
 //! if you only need wiring, topology, and delays.
 
+use alloc::{format, vec, vec::Vec};
+
 use crate::error::{MeshError, Result};
 use serde::de::{Deserializer, Error as DeError};
 use serde::{Deserialize, Serialize};
@@ -328,7 +330,7 @@ impl RawRouterConfig {
 }
 
 impl<'de> Deserialize<'de> for RouterConfig {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    fn deserialize<D>(deserializer: D) -> core::result::Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
@@ -677,34 +679,34 @@ enum LegacyField<T> {
 }
 
 impl<'de, T: Deserialize<'de>> Deserialize<'de> for LegacyField<T> {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    fn deserialize<D>(deserializer: D) -> core::result::Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        struct LegacyFieldVisitor<T>(std::marker::PhantomData<T>);
+        struct LegacyFieldVisitor<T>(core::marker::PhantomData<T>);
 
         impl<'de, T: Deserialize<'de>> serde::de::Visitor<'de> for LegacyFieldVisitor<T> {
             type Value = LegacyField<T>;
 
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            fn expecting(&self, formatter: &mut core::fmt::Formatter) -> core::fmt::Result {
                 formatter.write_str("a value or null")
             }
 
-            fn visit_unit<E>(self) -> std::result::Result<Self::Value, E>
+            fn visit_unit<E>(self) -> core::result::Result<Self::Value, E>
             where
                 E: serde::de::Error,
             {
                 Ok(LegacyField::Null)
             }
 
-            fn visit_none<E>(self) -> std::result::Result<Self::Value, E>
+            fn visit_none<E>(self) -> core::result::Result<Self::Value, E>
             where
                 E: serde::de::Error,
             {
                 Ok(LegacyField::Null)
             }
 
-            fn visit_some<D>(self, deserializer: D) -> std::result::Result<Self::Value, D::Error>
+            fn visit_some<D>(self, deserializer: D) -> core::result::Result<Self::Value, D::Error>
             where
                 D: serde::Deserializer<'de>,
             {
@@ -712,7 +714,7 @@ impl<'de, T: Deserialize<'de>> Deserialize<'de> for LegacyField<T> {
             }
         }
 
-        deserializer.deserialize_option(LegacyFieldVisitor(std::marker::PhantomData))
+        deserializer.deserialize_option(LegacyFieldVisitor(core::marker::PhantomData))
     }
 }
 
@@ -1030,7 +1032,7 @@ fn validate_fatigue_and_baseline(
 }
 
 impl<'de> Deserialize<'de> for ChannelRouter {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    fn deserialize<D>(deserializer: D) -> core::result::Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {

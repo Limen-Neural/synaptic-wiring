@@ -6,6 +6,13 @@
 //! axonal delay and polarity information. This is the core "wiring diagram"
 //! that the `SynapticMesh` orchestrator uses for spike propagation.
 
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
+
 use serde::de::{Deserializer, Error as DeError};
 use serde::{Deserialize, Serialize};
 
@@ -62,7 +69,7 @@ impl RawSynapticGraph {
     /// accept arbitrary field values (mismatched `row_ptr` length,
     /// non-monotonic offsets, out-of-range targets) that later panic in
     /// [`SynapticGraph::outgoing`] or [`SynapticGraph::out_degree`].
-    fn into_graph(self) -> std::result::Result<SynapticGraph, String> {
+    fn into_graph(self) -> core::result::Result<SynapticGraph, String> {
         let nnz = validate_row_ptr(&self.row_ptr, self.neuron_count)?;
         validate_edge_array_lengths(
             nnz,
@@ -90,7 +97,7 @@ impl RawSynapticGraph {
 
 /// Checks `row_ptr` has `neuron_count + 1` entries starting at 0 and
 /// non-decreasing, returning the total edge count (its final entry).
-fn validate_row_ptr(row_ptr: &[usize], neuron_count: usize) -> std::result::Result<usize, String> {
+fn validate_row_ptr(row_ptr: &[usize], neuron_count: usize) -> core::result::Result<usize, String> {
     let expected_len = neuron_count
         .checked_add(1)
         .ok_or_else(|| format!("neuron_count {neuron_count} is too large"))?;
@@ -114,7 +121,7 @@ fn validate_row_ptr(row_ptr: &[usize], neuron_count: usize) -> std::result::Resu
 fn validate_edge_array_lengths(
     nnz: usize,
     arrays: [(&str, usize); 4],
-) -> std::result::Result<(), String> {
+) -> core::result::Result<(), String> {
     for (name, len) in arrays {
         if len != nnz {
             return Err(format!(
@@ -129,7 +136,7 @@ fn validate_edge_array_lengths(
 fn validate_targets_in_bounds(
     targets: &[NeuronId],
     neuron_count: usize,
-) -> std::result::Result<(), String> {
+) -> core::result::Result<(), String> {
     if targets.iter().any(|&t| t as usize >= neuron_count) {
         return Err("target neuron id out of bounds".to_string());
     }
@@ -139,7 +146,7 @@ fn validate_targets_in_bounds(
 /// Checks that every weight is finite, so a non-JSON format (which, unlike
 /// JSON, can represent NaN/Inf) can't smuggle in a value that poisons
 /// current sums in [`crate::mesh::SynapticMesh::propagate`].
-fn validate_weights_finite(weights: &[f32]) -> std::result::Result<(), String> {
+fn validate_weights_finite(weights: &[f32]) -> core::result::Result<(), String> {
     if weights.iter().any(|w| !w.is_finite()) {
         return Err("synapse weight must be finite".to_string());
     }
@@ -151,7 +158,7 @@ fn validate_weights_finite(weights: &[f32]) -> std::result::Result<(), String> {
 fn validate_weights_agree_with_polarities(
     weights: &[f32],
     polarities: &[Polarity],
-) -> std::result::Result<(), String> {
+) -> core::result::Result<(), String> {
     for (&weight, &polarity) in weights.iter().zip(polarities.iter()) {
         if !signed_weight_agrees_with_polarity(weight, polarity) {
             return Err(invalid_signed_weight_polarity_msg(weight, polarity));
@@ -161,7 +168,7 @@ fn validate_weights_agree_with_polarities(
 }
 
 impl<'de> Deserialize<'de> for SynapticGraph {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    fn deserialize<D>(deserializer: D) -> core::result::Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {

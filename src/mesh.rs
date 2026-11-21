@@ -27,6 +27,8 @@
 //! mesh.propagate_into(&spikes, &mut currents).unwrap();
 //! ```
 
+use alloc::{format, string::String, vec, vec::Vec};
+
 use serde::de::{Deserializer, Error as DeError};
 use serde::{Deserialize, Serialize};
 
@@ -70,7 +72,7 @@ struct RawSynapticMesh {
 }
 
 impl RawSynapticMesh {
-    fn into_mesh(self) -> std::result::Result<SynapticMesh, String> {
+    fn into_mesh(self) -> core::result::Result<SynapticMesh, String> {
         if self.graph.neuron_count() != self.delay_buffer.neuron_count() {
             return Err(format!(
                 "mesh graph neuron_count {} does not match delay buffer neuron_count {}",
@@ -104,7 +106,7 @@ impl RawSynapticMesh {
 }
 
 impl<'de> Deserialize<'de> for SynapticMesh {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    fn deserialize<D>(deserializer: D) -> core::result::Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {

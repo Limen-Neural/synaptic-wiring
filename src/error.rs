@@ -5,7 +5,9 @@
 //! Follows the `corinth-canal` pattern of a single unified error enum
 //! using `thiserror` for ergonomic `Display` and `From` implementations.
 
-use std::fmt;
+use alloc::string::String;
+
+use core::fmt;
 
 /// Unified error type for synaptic-wiring operations.
 #[derive(Debug, Clone, PartialEq)]
@@ -103,7 +105,7 @@ impl fmt::Display for MeshError {
     }
 }
 
-impl std::error::Error for MeshError {}
+impl core::error::Error for MeshError {}
 
 /// Convenience alias used throughout the crate.
-pub type Result<T> = std::result::Result<T, MeshError>;
+pub type Result<T> = core::result::Result<T, MeshError>;

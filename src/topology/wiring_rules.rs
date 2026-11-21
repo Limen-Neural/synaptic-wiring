@@ -6,7 +6,10 @@
 //! biological constraints like Dale's law or to assign realistic
 //! axonal propagation delays.
 
+use alloc::{format, vec::Vec};
+
 use crate::error::MeshError;
+use crate::math;
 use crate::topology::graph::SynapticGraph;
 use crate::types::{DelayTicks, Polarity, SynapseDescriptor};
 
@@ -85,11 +88,13 @@ pub fn assign_delays(
         if let Some(pos) = positions {
             let src_pos = &pos[desc.source as usize];
             let tgt_pos = &pos[desc.target as usize];
-            let dist = ((src_pos[0] - tgt_pos[0]).powi(2)
-                + (src_pos[1] - tgt_pos[1]).powi(2)
-                + (src_pos[2] - tgt_pos[2]).powi(2))
-            .sqrt();
-            let delay = (dist / speed.max(1e-6)).round() as u16;
+            let (dx, dy, dz) = (
+                src_pos[0] - tgt_pos[0],
+                src_pos[1] - tgt_pos[1],
+                src_pos[2] - tgt_pos[2],
+            );
+            let dist = math::sqrt(dx * dx + dy * dy + dz * dz);
+            let delay = math::round(dist / speed.max(1e-6)) as u16;
             desc.delay = delay.clamp(1, max_delay);
         } else {
             // Deterministic delay from indices
