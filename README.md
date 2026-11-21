@@ -28,9 +28,9 @@ The Cargo package is `synaptic-wiring` (this crate was previously named
 [`Limen-Neural/synaptic-wiring`](https://github.com/Limen-Neural/synaptic-wiring)
 (GitHub redirects the former `Limen-Neural/synaptic-mesh` URL).
 
-It is a plain library with two runtime dependencies (`serde` and `sha2`) — no
-framework, no runtime, no GPU requirement, and no assumptions about how your
-neurons integrate current.
+It is a plain library with two runtime dependencies (`serde` and `sha2`, plus
+`libm` under the no_std `alloc` feature) — no framework, no runtime, no GPU
+requirement, and no assumptions about how your neurons integrate current.
 
 **Reach for it when you need to:**
 
@@ -329,7 +329,8 @@ The one neuron-like type here, `NeuromodNeuron` in [`router`](src/router.rs), is
 
 Spikenaut-SNN uses this crate for Dale-polarity wiring and multi-channel
 routing. That is a downstream consumer, not a requirement: nothing in the API
-assumes it, and depending on `synaptic-wiring` pulls in `serde` and `sha2`.
+assumes it, and depending on `synaptic-wiring` pulls in `serde` and `sha2` (and `libm` for
+no_std `alloc` builds).
 
 ## Architecture
 

@@ -47,9 +47,8 @@ fn hash_delay(src: usize, tgt: usize, max_delay: u16) -> u16 {
         return 0;
     }
     let h = hash_pair(src * 71 + 3, tgt * 37 + 11);
-    math::round(h * max_delay as f32)
-        .min(max_delay as f32)
-        .max(1.0) as u16
+    // `max_delay >= 1` here, so the clamp bounds are ordered.
+    math::round(h * max_delay as f32).clamp(1.0, max_delay as f32) as u16
 }
 
 // ── Generators ────────────────────────────────────────────────────────────────

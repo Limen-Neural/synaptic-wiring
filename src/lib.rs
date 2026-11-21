@@ -10,7 +10,7 @@
 //! Reach for it to generate biologically plausible topologies, give synapses
 //! axonal delays, respect Dale's law, or store a large sparse weight matrix
 //! compactly — all deterministically, with `serde` and `sha2` as the only
-//! runtime dependencies.
+//! runtime dependencies (plus `libm` under the no_std `alloc` feature).
 //!
 //! The crate is `no_std + alloc` capable: build with
 //! `default-features = false, features = ["alloc"]` for embedded or WASM
