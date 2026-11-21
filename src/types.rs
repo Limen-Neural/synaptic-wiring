@@ -161,8 +161,10 @@ pub struct TopologyConfig {
     /// [`crate::topology::generate_from_config`].
     ///
     /// Defaults to `ConnectionModel::default()` (`Uniform { p: 0.05 }`), both
-    /// in [`TopologyConfig::default()`] and when deserializing configurations
-    /// serialized before this field existed.
+    /// in [`TopologyConfig::default()`] and when deserializing self-describing
+    /// formats (for example JSON) that omit this field. Positional binary
+    /// formats such as postcard do not load configurations written before
+    /// this field existed.
     #[serde(default)]
     pub model: ConnectionModel,
 }
@@ -301,6 +303,19 @@ mod tests {
             TopologyConfig::default().model,
             ConnectionModel::Uniform { p } if p == 0.05
         ));
+    }
+
+    #[test]
+    fn topology_config_deserializes_explicit_model() {
+        let json = r#"{"neuron_count":64,"inhibitory_fraction":0.2,"max_delay":8,"sparsity_threshold":0.01,"model":{"SmallWorld":{"k":4,"beta":0.1}}}"#;
+        let config: TopologyConfig = serde_json::from_str(json).unwrap();
+        match config.model {
+            ConnectionModel::SmallWorld { k, beta } => {
+                assert_eq!(k, 4);
+                assert_eq!(beta, 0.1);
+            }
+            ref other => panic!("expected SmallWorld, got {other:?}"),
+        }
     }
 
     #[test]

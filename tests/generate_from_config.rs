@@ -106,12 +106,15 @@ fn dispatch_layered_rejects_size_sum_mismatch() {
 
 #[test]
 fn dispatch_layered_rejects_size_sum_overflow() {
-    // usize::MAX + 2 wraps to 1 in release builds and panics in debug; a sum
-    // that cannot be represented is a mismatch, not a pass.
+    // 2 + usize::MAX wraps to 1 in release builds and panics in debug; a sum
+    // that cannot be represented is a mismatch, not a pass. The small layer
+    // comes first so that even if the checked sum regressed to wrapping,
+    // `generate_layered` would bound its source loop to 2 iterations rather
+    // than usize::MAX.
     let cfg = config(
         1,
         ConnectionModel::Layered {
-            layer_sizes: vec![usize::MAX, 2],
+            layer_sizes: vec![2, usize::MAX],
             inter_layer_p: 0.5,
         },
     );

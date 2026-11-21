@@ -92,15 +92,25 @@ let config = TopologyConfig {
     sparsity_threshold: 0.01,
 };
 
-// 0.4.0
+// 0.4.0 — keep the existing fields, add `model`
+let config = TopologyConfig {
+    neuron_count: 64,
+    inhibitory_fraction: 0.2,
+    max_delay: 8,
+    sparsity_threshold: 0.01,
+    model: ConnectionModel::SmallWorld { k: 4, beta: 0.1 },
+};
+// or spread an existing config:
 let config = TopologyConfig {
     model: ConnectionModel::SmallWorld { k: 4, beta: 0.1 },
-    ..TopologyConfig::default()
+    ..config
 };
 ```
 
-Configs serialized as JSON before this change still deserialize —
-`#[serde(default)]` fills `model` with `Uniform { p: 0.05 }`.
+Configs serialized as JSON (or another self-describing format) before this
+change still deserialize — `#[serde(default)]` fills `model` with
+`Uniform { p: 0.05 }`. Positional binary formats such as postcard do not
+load pre-change configurations.
 
 `ConnectionModel` is now `#[non_exhaustive]`, so downstream `match`
 expressions need a wildcard arm. `MeshError` gained the `UnsupportedModel`
@@ -150,8 +160,9 @@ wildcard.
   generator — it needs neuron positions `TopologyConfig` does not carry — and
   returns the new `MeshError::UnsupportedModel`, as does any future variant
   under `ConnectionModel`'s new `#[non_exhaustive]`. `model` is
-  `#[serde(default)]`, so configurations serialized before this change load
-  as `Uniform { p: 0.05 }`, matching `TopologyConfig::default()`.
+  `#[serde(default)]`, so configurations serialized as JSON before this
+  change load as `Uniform { p: 0.05 }`, matching
+  `TopologyConfig::default()`.
   `sparsity_threshold` remains unconsumed (#101, LIM-1560).
 - **Topology**: `SynapticGraph::outgoing_synapses(neuron_id)` iterates one
   neuron's outgoing synapses as `SynapseDescriptor`s, built on the fly from
