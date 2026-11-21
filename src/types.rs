@@ -157,6 +157,16 @@ pub struct TopologyConfig {
     pub max_delay: DelayTicks,
     /// Minimum absolute weight to retain (sparsity pruning threshold).
     pub sparsity_threshold: f32,
+    /// Connection probability model dispatched on by
+    /// [`crate::topology::generate_from_config`].
+    ///
+    /// Defaults to `ConnectionModel::default()` (`Uniform { p: 0.05 }`), both
+    /// in [`TopologyConfig::default()`] and when deserializing self-describing
+    /// formats (for example JSON) that omit this field. Positional binary
+    /// formats such as postcard do not load configurations written before
+    /// this field existed.
+    #[serde(default)]
+    pub model: ConnectionModel,
 }
 
 impl Default for TopologyConfig {
@@ -166,6 +176,7 @@ impl Default for TopologyConfig {
             inhibitory_fraction: 0.20,
             max_delay: 20,
             sparsity_threshold: 0.01,
+            model: ConnectionModel::default(),
         }
     }
 }
@@ -173,7 +184,13 @@ impl Default for TopologyConfig {
 // ── Connection probability models ─────────────────────────────────────────────
 
 /// Strategy for determining connection probability between neuron pairs.
+///
+/// Marked `#[non_exhaustive]` so new variants are additive:
+/// [`crate::topology::generate_from_config`] returns
+/// [`crate::error::MeshError::UnsupportedModel`] for any variant that has no
+/// generator.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum ConnectionModel {
     /// Erdős–Rényi: each pair connected independently with probability `p`.
     Uniform { p: f32 },
@@ -269,6 +286,36 @@ mod tests {
             polarity: Polarity::Inhibitory,
         };
         let _ = desc.effective_weight();
+    }
+
+    #[test]
+    fn topology_config_deserializes_without_model_field() {
+        // Configs serialized before `TopologyConfig.model` existed must still
+        // load; `#[serde(default)]` fills in `ConnectionModel::default()`.
+        let json = r#"{"neuron_count":128,"inhibitory_fraction":0.2,"max_delay":8,"sparsity_threshold":0.01}"#;
+        let config: TopologyConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.neuron_count, 128);
+        match config.model {
+            ConnectionModel::Uniform { p } => assert_eq!(p, 0.05),
+            ref other => panic!("expected Uniform {{ p: 0.05 }}, got {other:?}"),
+        }
+        assert!(matches!(
+            TopologyConfig::default().model,
+            ConnectionModel::Uniform { p } if p == 0.05
+        ));
+    }
+
+    #[test]
+    fn topology_config_deserializes_explicit_model() {
+        let json = r#"{"neuron_count":64,"inhibitory_fraction":0.2,"max_delay":8,"sparsity_threshold":0.01,"model":{"SmallWorld":{"k":4,"beta":0.1}}}"#;
+        let config: TopologyConfig = serde_json::from_str(json).unwrap();
+        match config.model {
+            ConnectionModel::SmallWorld { k, beta } => {
+                assert_eq!(k, 4);
+                assert_eq!(beta, 0.1);
+            }
+            ref other => panic!("expected SmallWorld, got {other:?}"),
+        }
     }
 
     #[test]

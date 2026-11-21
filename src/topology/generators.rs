@@ -19,7 +19,7 @@ use alloc::{format, vec, vec::Vec};
 use crate::error::{MeshError, Result};
 use crate::math;
 use crate::topology::graph::SynapticGraph;
-use crate::types::{Polarity, SynapseDescriptor};
+use crate::types::{ConnectionModel, Polarity, SynapseDescriptor, TopologyConfig};
 
 // ── Deterministic hash helpers ────────────────────────────────────────────────
 
@@ -418,6 +418,82 @@ pub fn generate_layered(
     }
 
     SynapticGraph::from_descriptors(n, &descriptors)
+}
+
+/// Build a graph by dispatching on [`TopologyConfig::model`].
+///
+/// Shared arguments come from the config — `n = neuron_count`,
+/// `max_delay = max_delay`, `inhibitory_fraction = inhibitory_fraction` —
+/// and model parameters come from the variant:
+///
+/// | [`ConnectionModel`] variant | Generator call |
+/// | --- | --- |
+/// | `Uniform { p }` | [`generate_random`] `(n, p, max_delay, inhibitory_fraction)` |
+/// | `SmallWorld { k, beta }` | [`generate_small_world`] `(n, k, beta, max_delay, inhibitory_fraction)` |
+/// | `ScaleFree { m0, m }` | [`generate_scale_free`] `(n, m0, m, max_delay, inhibitory_fraction)` |
+/// | `Layered { layer_sizes, inter_layer_p }` | [`generate_layered`] `(layer_sizes, inter_layer_p, max_delay, inhibitory_fraction)` |
+///
+/// `Layered` additionally requires `layer_sizes.iter().sum::<usize>() ==
+/// neuron_count`; a mismatch returns [`MeshError::InvalidConfig`] rather
+/// than silently overriding `neuron_count`.
+///
+/// `sparsity_threshold` is not consumed: no generator takes it, so dispatch
+/// ignores it.
+///
+/// # Errors
+///
+/// - [`MeshError::UnsupportedModel`] when the [`ConnectionModel`] variant has
+///   no generator. `DistanceDependent` has none in this crate — it needs
+///   neuron positions, which [`TopologyConfig`] does not carry — and any
+///   variant added under `#[non_exhaustive]` lands here until it gains one.
+/// - Whatever [`MeshError`] the dispatched generator returns for out-of-range
+///   parameters (see each generator's docs).
+///
+/// # Example
+///
+/// ```
+/// use synaptic_wiring::topology::generate_from_config;
+/// use synaptic_wiring::types::{ConnectionModel, TopologyConfig};
+///
+/// let config = TopologyConfig {
+///     neuron_count: 64,
+///     model: ConnectionModel::SmallWorld { k: 4, beta: 0.1 },
+///     ..TopologyConfig::default()
+/// };
+/// let graph = generate_from_config(&config).unwrap();
+/// assert_eq!(graph.neuron_count(), 64);
+/// ```
+pub fn generate_from_config(config: &TopologyConfig) -> Result<SynapticGraph> {
+    let n = config.neuron_count;
+    let max_delay = config.max_delay;
+    let inhibitory_fraction = config.inhibitory_fraction;
+    match &config.model {
+        ConnectionModel::Uniform { p } => generate_random(n, *p, max_delay, inhibitory_fraction),
+        ConnectionModel::SmallWorld { k, beta } => {
+            generate_small_world(n, *k, *beta, max_delay, inhibitory_fraction)
+        }
+        ConnectionModel::ScaleFree { m0, m } => {
+            generate_scale_free(n, *m0, *m, max_delay, inhibitory_fraction)
+        }
+        ConnectionModel::Layered {
+            layer_sizes,
+            inter_layer_p,
+        } => {
+            let total = layer_sizes
+                .iter()
+                .try_fold(0usize, |acc, &size| acc.checked_add(size))
+                .ok_or_else(|| MeshError::InvalidConfig("layer_sizes sum exceeds usize".into()))?;
+            if total != n {
+                return Err(MeshError::InvalidConfig(format!(
+                    "layer_sizes sum to {total} but neuron_count is {n}"
+                )));
+            }
+            generate_layered(layer_sizes, *inter_layer_p, max_delay, inhibitory_fraction)
+        }
+        unsupported => Err(MeshError::UnsupportedModel(format!(
+            "{unsupported:?} has no topology generator"
+        ))),
+    }
 }
 
 #[cfg(test)]

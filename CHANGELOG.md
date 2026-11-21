@@ -78,6 +78,45 @@ The wrappers add no validation: `.into()` and the struct literals carry the
 same `f32` / `usize` value through unchanged, and saved router checkpoints
 need no state migration.
 
+#### `TopologyConfig`, `ConnectionModel`, and `MeshError`
+
+`TopologyConfig` gained a `model: ConnectionModel` field (#101, LIM-1560).
+Exhaustive struct literals must either name the field or use the spread:
+
+```rust
+// 0.3.x
+let config = TopologyConfig {
+    neuron_count: 64,
+    inhibitory_fraction: 0.2,
+    max_delay: 8,
+    sparsity_threshold: 0.01,
+};
+
+// 0.4.0 — keep the existing fields, add `model`
+let config = TopologyConfig {
+    neuron_count: 64,
+    inhibitory_fraction: 0.2,
+    max_delay: 8,
+    sparsity_threshold: 0.01,
+    model: ConnectionModel::SmallWorld { k: 4, beta: 0.1 },
+};
+// or spread an existing config:
+let config = TopologyConfig {
+    model: ConnectionModel::SmallWorld { k: 4, beta: 0.1 },
+    ..config
+};
+```
+
+Configs serialized as JSON (or another self-describing format) before this
+change still deserialize — `#[serde(default)]` fills `model` with
+`Uniform { p: 0.05 }`. Positional binary formats such as postcard do not
+load pre-change configurations.
+
+`ConnectionModel` is now `#[non_exhaustive]`, so downstream `match`
+expressions need a wildcard arm. `MeshError` gained the `UnsupportedModel`
+variant; exhaustive `match`es on the error enum need the new arm or a
+wildcard.
+
 ### Added
 
 - **`no_std` support**: new `std` (default) and `alloc` features. Build with
@@ -112,6 +151,19 @@ need no state migration.
   `sparsity()`'s `usize` square does not overflow, i.e. up to 65,535 neurons
   on 32-bit targets; `density` squares in `f64`). `neuron_count` and
   `synapse_count` (already public) now have rustdoc examples (#98, LIM-1557).
+- **Topology**: `generate_from_config(&TopologyConfig) -> Result<SynapticGraph>`
+  in `topology` dispatches on the new `TopologyConfig.model: ConnectionModel`
+  field to the matching generator — `Uniform` → `generate_random`,
+  `SmallWorld` → `generate_small_world`, `ScaleFree` → `generate_scale_free`,
+  `Layered` → `generate_layered` (after checking `layer_sizes` sums to
+  `neuron_count`, else `MeshError::InvalidConfig`). `DistanceDependent` has no
+  generator — it needs neuron positions `TopologyConfig` does not carry — and
+  returns the new `MeshError::UnsupportedModel`, as does any future variant
+  under `ConnectionModel`'s new `#[non_exhaustive]`. `model` is
+  `#[serde(default)]`, so configurations serialized as JSON before this
+  change load as `Uniform { p: 0.05 }`, matching
+  `TopologyConfig::default()`.
+  `sparsity_threshold` remains unconsumed (#101, LIM-1560).
 - **Topology**: `SynapticGraph::outgoing_synapses(neuron_id)` iterates one
   neuron's outgoing synapses as `SynapseDescriptor`s, built on the fly from
   the CSR edge arrays without allocating. Descriptor `weight` is the
