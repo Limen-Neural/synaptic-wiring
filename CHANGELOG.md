@@ -112,6 +112,18 @@ need no state migration.
   `sparsity()`'s `usize` square does not overflow, i.e. up to 65,535 neurons
   on 32-bit targets; `density` squares in `f64`). `neuron_count` and
   `synapse_count` (already public) now have rustdoc examples (#98, LIM-1557).
+- **Topology**: `generate_from_config(&TopologyConfig) -> Result<SynapticGraph>`
+  in `topology` dispatches on the new `TopologyConfig.model: ConnectionModel`
+  field to the matching generator — `Uniform` → `generate_random`,
+  `SmallWorld` → `generate_small_world`, `ScaleFree` → `generate_scale_free`,
+  `Layered` → `generate_layered` (after checking `layer_sizes` sums to
+  `neuron_count`, else `MeshError::InvalidConfig`). `DistanceDependent` has no
+  generator — it needs neuron positions `TopologyConfig` does not carry — and
+  returns the new `MeshError::UnsupportedModel`, as does any future variant
+  under `ConnectionModel`'s new `#[non_exhaustive]`. `model` is
+  `#[serde(default)]`, so configurations serialized before this change load
+  as `Uniform { p: 0.05 }`, matching `TopologyConfig::default()`.
+  `sparsity_threshold` remains unconsumed (#101, LIM-1560).
 - **Topology**: `SynapticGraph::outgoing_synapses(neuron_id)` iterates one
   neuron's outgoing synapses as `SynapseDescriptor`s, built on the fly from
   the CSR edge arrays without allocating. Descriptor `weight` is the

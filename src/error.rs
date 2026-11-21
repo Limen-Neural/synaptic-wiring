@@ -41,6 +41,15 @@ pub enum MeshError {
     /// Topology generation failed (e.g., impossible wiring constraints).
     TopologyError(String),
 
+    /// A [`ConnectionModel`](crate::ConnectionModel) variant has no topology
+    /// generator.
+    ///
+    /// [`crate::topology::generate_from_config`] returns this for
+    /// `DistanceDependent` (which needs neuron positions that
+    /// [`TopologyConfig`](crate::TopologyConfig) does not carry) and for any
+    /// `#[non_exhaustive]` variant added after the dispatch was written.
+    UnsupportedModel(String),
+
     /// Delay buffer overflow or misconfiguration.
     DelayError(String),
 
@@ -88,6 +97,9 @@ impl fmt::Display for MeshError {
                 write!(f, "index {index} out of bounds (max {max})")
             }
             MeshError::TopologyError(msg) => write!(f, "topology error: {msg}"),
+            MeshError::UnsupportedModel(msg) => {
+                write!(f, "unsupported connection model: {msg}")
+            }
             MeshError::DelayError(msg) => write!(f, "delay error: {msg}"),
             MeshError::NonFiniteSignal { index, context } => {
                 write!(f, "non-finite signal in {context}[{index}]")
