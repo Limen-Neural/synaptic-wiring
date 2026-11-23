@@ -268,3 +268,19 @@ fn distance_model_max_zero_differs_from_assign_delays() {
     assert!(legacy_delays(Some(&pos), 1.0, 0).iter().all(|&d| d == 0));
     assert!(legacy_delays(None, 1.0, 0).iter().all(|&d| d == 0));
 }
+
+#[test]
+fn short_positions_panic_leaves_descriptors_unchanged() {
+    let mut d = descriptors(12);
+    let pos = positions(11);
+    let model = DelayModel::DistanceProportional {
+        speed: 1.0,
+        min_delay: 1,
+        max_delay: 10,
+    };
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        assign_delays_from_model(&mut d, Some(&pos), &model);
+    }));
+    assert!(result.is_err());
+    assert!(d.iter().all(|x| x.delay == 99));
+}

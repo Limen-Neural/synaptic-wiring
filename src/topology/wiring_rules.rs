@@ -11,7 +11,7 @@ use alloc::{format, vec::Vec};
 use crate::error::MeshError;
 use crate::math;
 use crate::topology::graph::SynapticGraph;
-use crate::types::{DelayModel, DelayTicks, Polarity, SynapseDescriptor};
+use crate::types::{DelayModel, DelayTicks, NeuronId, Polarity, SynapseDescriptor};
 
 /// Apply Dale's law to a graph: all outgoing synapses from each neuron
 /// share a single polarity (excitatory or inhibitory).
@@ -129,7 +129,9 @@ pub fn assign_delays(
 /// # Panics
 ///
 /// Like [`assign_delays`], panics if `positions` is shorter than a
-/// descriptor's `source + 1` or `target + 1` on the distance path.
+/// descriptor's `source + 1` or `target + 1` on the distance path. The
+/// check runs before any delay is written, so a panic leaves `descriptors`
+/// unchanged.
 pub fn assign_delays_from_model(
     descriptors: &mut [SynapseDescriptor],
     positions: Option<&[[f32; 3]]>,
@@ -185,10 +187,10 @@ impl DelayRange {
 }
 
 fn index_spread_delays(descriptors: &mut [SynapseDescriptor], range: DelayRange) {
-    let span = usize::from(range.max) - usize::from(range.min) + 1;
+    let span = u64::from(range.max) - u64::from(range.min) + 1;
     for desc in descriptors.iter_mut() {
-        let mixed = (desc.source as usize * 71 + desc.target as usize * 37 + 13) % (span + 1);
-        desc.delay = (usize::from(range.min) + mixed.max(1) - 1) as DelayTicks;
+        let mixed = (u64::from(desc.source) * 71 + u64::from(desc.target) * 37 + 13) % (span + 1);
+        desc.delay = (u64::from(range.min) + mixed.max(1) - 1) as DelayTicks;
     }
 }
 
@@ -198,6 +200,14 @@ fn distance_delays(
     speed: f32,
     range: DelayRange,
 ) {
+    let in_bounds = |id: NeuronId| (id as usize) < positions.len();
+    assert!(
+        descriptors
+            .iter()
+            .all(|d| in_bounds(d.source) && in_bounds(d.target)),
+        "positions has {} entries, fewer than a descriptor's source or target index requires",
+        positions.len()
+    );
     for desc in descriptors.iter_mut() {
         let src_pos = &positions[desc.source as usize];
         let tgt_pos = &positions[desc.target as usize];
