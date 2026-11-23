@@ -149,15 +149,18 @@ pub fn assign_delays_from_model(
         DelayModel::UniformRandom {
             min_delay,
             max_delay,
-        } => index_spread_delays(descriptors, min_delay, max_delay),
+        } => index_spread_delays(descriptors, DelayRange::new(min_delay, max_delay)),
         DelayModel::DistanceProportional {
             speed,
             min_delay,
             max_delay,
-        } => match positions {
-            Some(pos) => distance_delays(descriptors, pos, speed, min_delay, max_delay),
-            None => index_spread_delays(descriptors, min_delay, max_delay),
-        },
+        } => {
+            let range = DelayRange::new(min_delay, max_delay);
+            match positions {
+                Some(pos) => distance_delays(descriptors, pos, speed, range),
+                None => index_spread_delays(descriptors, range),
+            }
+        }
     }
 }
 
@@ -167,26 +170,33 @@ fn set_all_delays(descriptors: &mut [SynapseDescriptor], delay: DelayTicks) {
     }
 }
 
-/// Requires `min_delay <= max_delay`.
-fn index_spread_delays(
-    descriptors: &mut [SynapseDescriptor],
-    min_delay: DelayTicks,
-    max_delay: DelayTicks,
-) {
-    let span = usize::from(max_delay) - usize::from(min_delay) + 1;
-    for desc in descriptors.iter_mut() {
-        let mixed = (desc.source as usize * 71 + desc.target as usize * 37 + 13) % (span + 1);
-        desc.delay = (usize::from(min_delay) + mixed.max(1) - 1) as DelayTicks;
+/// Inclusive delay range with `min <= max`.
+#[derive(Debug, Clone, Copy)]
+struct DelayRange {
+    min: DelayTicks,
+    max: DelayTicks,
+}
+
+impl DelayRange {
+    fn new(min: DelayTicks, max: DelayTicks) -> Self {
+        debug_assert!(min <= max);
+        Self { min, max }
     }
 }
 
-/// Requires `min_delay <= max_delay`.
+fn index_spread_delays(descriptors: &mut [SynapseDescriptor], range: DelayRange) {
+    let span = usize::from(range.max) - usize::from(range.min) + 1;
+    for desc in descriptors.iter_mut() {
+        let mixed = (desc.source as usize * 71 + desc.target as usize * 37 + 13) % (span + 1);
+        desc.delay = (usize::from(range.min) + mixed.max(1) - 1) as DelayTicks;
+    }
+}
+
 fn distance_delays(
     descriptors: &mut [SynapseDescriptor],
     positions: &[[f32; 3]],
     speed: f32,
-    min_delay: DelayTicks,
-    max_delay: DelayTicks,
+    range: DelayRange,
 ) {
     for desc in descriptors.iter_mut() {
         let src_pos = &positions[desc.source as usize];
@@ -198,7 +208,7 @@ fn distance_delays(
         );
         let dist = math::sqrt(dx * dx + dy * dy + dz * dz);
         let delay = math::round(dist / speed.max(1e-6)) as u16;
-        desc.delay = delay.clamp(min_delay, max_delay);
+        desc.delay = delay.clamp(range.min, range.max);
     }
 }
 
