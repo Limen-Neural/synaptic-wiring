@@ -116,6 +116,16 @@ fn uniform_shift_is_legacy_spread_offset() {
     assert_eq!(shifted, expected);
 }
 
+/// Every model-aware generator's error for `model`.
+fn generator_errors(model: &DelayModel) -> [MeshError; 4] {
+    [
+        generate_random_with_model(16, 0.2, model, INH).unwrap_err(),
+        generate_small_world_with_model(16, 4, 0.2, model, INH).unwrap_err(),
+        generate_scale_free_with_model(16, 3, 2, model, INH).unwrap_err(),
+        generate_layered_with_model(&[8, 8], 0.5, model, INH).unwrap_err(),
+    ]
+}
+
 #[test]
 fn generators_reject_distance_proportional() {
     let model = DelayModel::DistanceProportional {
@@ -123,35 +133,29 @@ fn generators_reject_distance_proportional() {
         min_delay: 1,
         max_delay: 5,
     };
-    let errors = [
-        generate_random_with_model(16, 0.2, &model, INH).unwrap_err(),
-        generate_small_world_with_model(16, 4, 0.2, &model, INH).unwrap_err(),
-        generate_scale_free_with_model(16, 3, 2, &model, INH).unwrap_err(),
-        generate_layered_with_model(&[8, 8], 0.5, &model, INH).unwrap_err(),
-    ];
-    for err in errors {
-        assert!(matches!(err, MeshError::UnsupportedModel(_)), "{err:?}");
-    }
+    let errors = generator_errors(&model);
+    assert!(
+        errors
+            .iter()
+            .all(|e| matches!(e, MeshError::UnsupportedModel(_))),
+        "{errors:?}"
+    );
 }
 
 #[test]
 fn generators_reject_inverted_range() {
-    for model in [
-        uniform(5, 4),
-        DelayModel::DistanceProportional {
-            speed: 1.0,
-            min_delay: 5,
-            max_delay: 4,
-        },
-    ] {
-        let errors = [
-            generate_random_with_model(16, 0.2, &model, INH).unwrap_err(),
-            generate_small_world_with_model(16, 4, 0.2, &model, INH).unwrap_err(),
-            generate_scale_free_with_model(16, 3, 2, &model, INH).unwrap_err(),
-            generate_layered_with_model(&[8, 8], 0.5, &model, INH).unwrap_err(),
-        ];
-        for err in errors {
-            assert!(matches!(err, MeshError::InvalidConfig(_)), "{err:?}");
-        }
+    let distance = DelayModel::DistanceProportional {
+        speed: 1.0,
+        min_delay: 5,
+        max_delay: 4,
+    };
+    for model in [uniform(5, 4), distance] {
+        let errors = generator_errors(&model);
+        assert!(
+            errors
+                .iter()
+                .all(|e| matches!(e, MeshError::InvalidConfig(_))),
+            "{errors:?}"
+        );
     }
 }
