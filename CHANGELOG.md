@@ -127,10 +127,13 @@ wildcard.
   hash, no RNG) and spreads over `[min_delay, max_delay]`; the generators
   reject `DistanceProportional` (no positions) with
   `MeshError::UnsupportedModel` and `min_delay > max_delay` with
-  `MeshError::InvalidConfig`. The legacy generators and `assign_delays` keep
-  their signatures and output: `max_delay = 0` maps to `Fixed { delay: 0 }`,
-  anything else to `UniformRandom { min_delay: 1, max_delay }`, and every
-  existing topology digest is unchanged (#100, LIM-1559).
+  `MeshError::InvalidConfig`. The legacy generators keep their signatures
+  and output (every existing topology digest is unchanged): their
+  `max_delay = 0` maps to `Fixed { delay: 0 }`, anything else to
+  `UniformRandom { min_delay: 1, max_delay }`. `assign_delays` is unchanged;
+  for `max_delay >= 1` it equals `assign_delays_from_model` with
+  `DistanceProportional { speed, min_delay: 1, max_delay }`, which uses
+  positions when given and the same index spread otherwise (#100, LIM-1559).
 
 - **`no_std` support**: new `std` (default) and `alloc` features. Build with
   `default-features = false, features = ["alloc"]` for embedded and WASM
