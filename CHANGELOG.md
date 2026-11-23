@@ -119,6 +119,19 @@ wildcard.
 
 ### Added
 
+- **`DelayModel` wired into the generators**: `generate_random_with_model`,
+  `generate_small_world_with_model`, `generate_scale_free_with_model` and
+  `generate_layered_with_model` take a `&DelayModel` instead of a raw
+  `max_delay: u16`, and `topology::assign_delays_from_model` rewrites
+  descriptor delays from one. `UniformRandom` stays deterministic (index
+  hash, no RNG) and spreads over `[min_delay, max_delay]`; the generators
+  reject `DistanceProportional` (no positions) with
+  `MeshError::UnsupportedModel` and `min_delay > max_delay` with
+  `MeshError::InvalidConfig`. The legacy generators and `assign_delays` keep
+  their signatures and output: `max_delay = 0` maps to `Fixed { delay: 0 }`,
+  anything else to `UniformRandom { min_delay: 1, max_delay }`, and every
+  existing topology digest is unchanged (#100, LIM-1559).
+
 - **`no_std` support**: new `std` (default) and `alloc` features. Build with
   `default-features = false, features = ["alloc"]` for embedded and WASM
   targets that have an allocator but no `std`. `alloc` pulls in `libm` for

@@ -66,7 +66,7 @@ crate. See [Crate boundary](#crate-boundary).
 | Wire up a network from a classic model | `topology::generate_small_world` and friends | [Topology Generation](#topology-generation) |
 | Run spikes through it, tick by tick | `SynapticMesh::propagate` | [Quick Start](#quick-start-building-a-mesh) |
 | Hand-build an exact graph | `SynapticGraph::from_descriptors` with `SynapseDescriptor` | [Spike delivery contract](#spike-delivery-contract) |
-| Plan polarity or distance-based delays *before* building a graph | `topology::apply_dale_polarity` (computes a per-neuron polarity vector), `topology::assign_delays` (rewrites descriptors in place) | [Temporal Delays](#temporal-delays--spike-propagation) |
+| Plan polarity or distance-based delays *before* building a graph | `topology::apply_dale_polarity` (computes a per-neuron polarity vector), `topology::assign_delays` / `topology::assign_delays_from_model` (rewrite descriptors in place, the latter from a `DelayModel`) | [Temporal Delays](#temporal-delays--spike-propagation) |
 | Store a big sparse weight matrix / upload to a GPU | `SparseSynapticMap`, `SynapticMesh::to_gpu_arrays` | [Core Capabilities](#core-capabilities) |
 | Record topology in a manifest / compare two graphs | `SynapticGraph::topology_digest` | [Topology digest](#topology-digest) |
 | Pick a few active channels out of many inputs | `ChannelRouter` | [Generic Channel Router](#generic-channel-router) |

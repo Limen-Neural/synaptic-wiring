@@ -17,8 +17,9 @@ pub use digest::{
     TopologyDigest, TopologyDigestParseError,
 };
 pub use generators::{
-    generate_from_config, generate_layered, generate_random, generate_scale_free,
-    generate_small_world,
+    generate_from_config, generate_layered, generate_layered_with_model, generate_random,
+    generate_random_with_model, generate_scale_free, generate_scale_free_with_model,
+    generate_small_world, generate_small_world_with_model,
 };
 pub use graph::SynapticGraph;
-pub use wiring_rules::{apply_dale_polarity, assign_delays};
+pub use wiring_rules::{apply_dale_polarity, assign_delays, assign_delays_from_model};

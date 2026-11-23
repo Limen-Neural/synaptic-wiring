@@ -6,6 +6,26 @@
 //! following the corinth-canal pattern — deterministic from neuron index
 //! alone, reproducible across runs.
 //!
+//! # Delay models
+//!
+//! Each generator has a `*_with_model` sibling that takes a [`DelayModel`]
+//! instead of a raw `max_delay`:
+//!
+//! - [`DelayModel::Fixed`] gives every synapse the same delay.
+//! - [`DelayModel::UniformRandom`] spreads delays over
+//!   `[min_delay, max_delay]` with the same deterministic index hash the
+//!   legacy generators use: `min_delay - 1 + h(span)` where
+//!   `span = max_delay - min_delay + 1` and `h(span) ∈ [1, span]`. With
+//!   `min_delay == 1` this is exactly the legacy spread.
+//! - [`DelayModel::DistanceProportional`] needs neuron positions, which the
+//!   generators do not have, so it is rejected with
+//!   [`MeshError::UnsupportedModel`]; use
+//!   [`assign_delays_from_model`](crate::topology::assign_delays_from_model).
+//!
+//! The legacy generators keep their `max_delay: u16` signatures: `0` behaves
+//! as `Fixed { delay: 0 }` and any other value as
+//! `UniformRandom { min_delay: 1, max_delay }`, so their output is unchanged.
+//!
 //! # References
 //!
 //! - Erdős, P. & Rényi, A. (1959). *On random graphs.*
@@ -19,7 +39,7 @@ use alloc::{format, vec, vec::Vec};
 use crate::error::{MeshError, Result};
 use crate::math;
 use crate::topology::graph::SynapticGraph;
-use crate::types::{ConnectionModel, Polarity, SynapseDescriptor, TopologyConfig};
+use crate::types::{ConnectionModel, DelayModel, Polarity, SynapseDescriptor, TopologyConfig};
 
 // ── Deterministic hash helpers ────────────────────────────────────────────────
 
@@ -41,14 +61,80 @@ fn hash_weight(src: usize, tgt: usize, base: f32, spread: f32) -> f32 {
     base + hash_pair(src * 97 + 13, tgt * 53 + 7) * spread
 }
 
-/// Deterministic delay from neuron pair.
-fn hash_delay(src: usize, tgt: usize, max_delay: u16) -> u16 {
-    if max_delay == 0 {
-        return 0;
+/// Delay rule of a validated [`DelayModel`], resolved per synapse.
+#[derive(Debug, Clone, Copy)]
+enum GeneratorDelay {
+    Fixed(u16),
+    /// `min - 1 + h(span)` with `h(span) ∈ [1, span]`; `span >= 1` and
+    /// `min + span - 1` fits in `u16`.
+    Spread {
+        min: u16,
+        span: u32,
+    },
+}
+
+impl GeneratorDelay {
+    fn from_model(model: &DelayModel) -> Result<Self> {
+        match *model {
+            DelayModel::Fixed { delay } => Ok(Self::Fixed(delay)),
+            DelayModel::UniformRandom {
+                min_delay,
+                max_delay,
+            } => {
+                check_delay_range(min_delay, max_delay)?;
+                Ok(Self::Spread {
+                    min: min_delay,
+                    span: u32::from(max_delay) - u32::from(min_delay) + 1,
+                })
+            }
+            DelayModel::DistanceProportional {
+                min_delay,
+                max_delay,
+                ..
+            } => {
+                check_delay_range(min_delay, max_delay)?;
+                Err(MeshError::UnsupportedModel(
+                    "DelayModel::DistanceProportional needs neuron positions, which \
+                     generators do not have; use topology::assign_delays_from_model"
+                        .into(),
+                ))
+            }
+        }
     }
-    let h = hash_pair(src * 71 + 3, tgt * 37 + 11);
-    // `max_delay >= 1` here, so the clamp bounds are ordered.
-    math::round(h * max_delay as f32).clamp(1.0, max_delay as f32) as u16
+
+    /// Delay rule the legacy `max_delay: u16` generator parameter stands for.
+    fn legacy(max_delay: u16) -> Self {
+        if max_delay == 0 {
+            Self::Fixed(0)
+        } else {
+            Self::Spread {
+                min: 1,
+                span: u32::from(max_delay),
+            }
+        }
+    }
+
+    /// Deterministic delay for one synapse.
+    fn resolve(self, src: usize, tgt: usize) -> u16 {
+        match self {
+            Self::Fixed(delay) => delay,
+            Self::Spread { min, span } => {
+                let h = hash_pair(src * 71 + 3, tgt * 37 + 11);
+                // `span >= 1`, so the clamp bounds are ordered.
+                let offset = math::round(h * span as f32).clamp(1.0, span as f32) as u32;
+                (u32::from(min) + offset - 1) as u16
+            }
+        }
+    }
+}
+
+fn check_delay_range(min_delay: u16, max_delay: u16) -> Result<()> {
+    if min_delay > max_delay {
+        return Err(MeshError::InvalidConfig(format!(
+            "delay model min_delay={min_delay} must be <= max_delay={max_delay}"
+        )));
+    }
+    Ok(())
 }
 
 // ── Generators ────────────────────────────────────────────────────────────────
@@ -59,10 +145,44 @@ fn hash_delay(src: usize, tgt: usize, max_delay: u16) -> u16 {
 /// probability `p`. Self-connections are not created.
 ///
 /// Deterministic: the same `(n, p)` always produces the same graph.
+///
+/// Same as [`generate_random_with_model`] with `max_delay == 0` mapped to
+/// `DelayModel::Fixed { delay: 0 }` and any other value to
+/// `DelayModel::UniformRandom { min_delay: 1, max_delay }`.
 pub fn generate_random(
     n: usize,
     p: f32,
     max_delay: u16,
+    inhibitory_fraction: f32,
+) -> Result<SynapticGraph> {
+    random_graph(n, p, GeneratorDelay::legacy(max_delay), inhibitory_fraction)
+}
+
+/// [`generate_random`] with delays from a [`DelayModel`].
+///
+/// # Errors
+///
+/// - [`MeshError::InvalidConfig`] for `min_delay > max_delay`, or for any
+///   parameter [`generate_random`] rejects.
+/// - [`MeshError::UnsupportedModel`] for [`DelayModel::DistanceProportional`].
+pub fn generate_random_with_model(
+    n: usize,
+    p: f32,
+    model: &DelayModel,
+    inhibitory_fraction: f32,
+) -> Result<SynapticGraph> {
+    random_graph(
+        n,
+        p,
+        GeneratorDelay::from_model(model)?,
+        inhibitory_fraction,
+    )
+}
+
+fn random_graph(
+    n: usize,
+    p: f32,
+    delays: GeneratorDelay,
     inhibitory_fraction: f32,
 ) -> Result<SynapticGraph> {
     if !(0.0..=1.0).contains(&p) {
@@ -98,7 +218,7 @@ pub fn generate_random(
                     source: src as u32,
                     target: tgt as u32,
                     weight: hash_weight(src, tgt, 0.3, 0.6),
-                    delay: hash_delay(src, tgt, max_delay),
+                    delay: delays.resolve(src, tgt),
                     polarity,
                 });
             }
@@ -130,11 +250,54 @@ pub fn generate_random(
 ///
 /// Watts, D. J. & Strogatz, S. H. (1998). *Collective dynamics of
 /// 'small-world' networks.* Nature, 393, 440–442.
+///
+/// Same as [`generate_small_world_with_model`] with `max_delay == 0` mapped to
+/// `DelayModel::Fixed { delay: 0 }` and any other value to
+/// `DelayModel::UniformRandom { min_delay: 1, max_delay }`.
 pub fn generate_small_world(
     n: usize,
     k: usize,
     beta: f32,
     max_delay: u16,
+    inhibitory_fraction: f32,
+) -> Result<SynapticGraph> {
+    small_world_graph(
+        n,
+        k,
+        beta,
+        GeneratorDelay::legacy(max_delay),
+        inhibitory_fraction,
+    )
+}
+
+/// [`generate_small_world`] with delays from a [`DelayModel`].
+///
+/// # Errors
+///
+/// - [`MeshError::InvalidConfig`] for `min_delay > max_delay`, or for any
+///   parameter [`generate_small_world`] rejects.
+/// - [`MeshError::UnsupportedModel`] for [`DelayModel::DistanceProportional`].
+pub fn generate_small_world_with_model(
+    n: usize,
+    k: usize,
+    beta: f32,
+    model: &DelayModel,
+    inhibitory_fraction: f32,
+) -> Result<SynapticGraph> {
+    small_world_graph(
+        n,
+        k,
+        beta,
+        GeneratorDelay::from_model(model)?,
+        inhibitory_fraction,
+    )
+}
+
+fn small_world_graph(
+    n: usize,
+    k: usize,
+    beta: f32,
+    delays: GeneratorDelay,
     inhibitory_fraction: f32,
 ) -> Result<SynapticGraph> {
     if n < 3 {
@@ -188,7 +351,7 @@ pub fn generate_small_world(
                 source: src as u32,
                 target: tgt as u32,
                 weight: hash_weight(src, tgt, 0.4, 0.5),
-                delay: hash_delay(src, tgt, max_delay),
+                delay: delays.resolve(src, tgt),
                 polarity,
             });
         }
@@ -244,11 +407,54 @@ fn rewire_small_world_target(
 ///
 /// Barabási, A.-L. & Albert, R. (1999). *Emergence of scaling in random
 /// networks.* Science, 286, 509–512.
+///
+/// Same as [`generate_scale_free_with_model`] with `max_delay == 0` mapped to
+/// `DelayModel::Fixed { delay: 0 }` and any other value to
+/// `DelayModel::UniformRandom { min_delay: 1, max_delay }`.
 pub fn generate_scale_free(
     n: usize,
     m0: usize,
     m: usize,
     max_delay: u16,
+    inhibitory_fraction: f32,
+) -> Result<SynapticGraph> {
+    scale_free_graph(
+        n,
+        m0,
+        m,
+        GeneratorDelay::legacy(max_delay),
+        inhibitory_fraction,
+    )
+}
+
+/// [`generate_scale_free`] with delays from a [`DelayModel`].
+///
+/// # Errors
+///
+/// - [`MeshError::InvalidConfig`] for `min_delay > max_delay`, or for any
+///   parameter [`generate_scale_free`] rejects.
+/// - [`MeshError::UnsupportedModel`] for [`DelayModel::DistanceProportional`].
+pub fn generate_scale_free_with_model(
+    n: usize,
+    m0: usize,
+    m: usize,
+    model: &DelayModel,
+    inhibitory_fraction: f32,
+) -> Result<SynapticGraph> {
+    scale_free_graph(
+        n,
+        m0,
+        m,
+        GeneratorDelay::from_model(model)?,
+        inhibitory_fraction,
+    )
+}
+
+fn scale_free_graph(
+    n: usize,
+    m0: usize,
+    m: usize,
+    delays: GeneratorDelay,
     inhibitory_fraction: f32,
 ) -> Result<SynapticGraph> {
     if m0 < 2 || m0 > n {
@@ -284,7 +490,7 @@ pub fn generate_scale_free(
                     source: i as u32,
                     target: j as u32,
                     weight: hash_weight(i, j, 0.3, 0.6),
-                    delay: hash_delay(i, j, max_delay),
+                    delay: delays.resolve(i, j),
                     polarity,
                 });
                 *deg += 1;
@@ -306,7 +512,7 @@ pub fn generate_scale_free(
                 source: new_node as u32,
                 target: target_cursor as u32,
                 weight: hash_weight(new_node, target_cursor, 0.3, 0.6),
-                delay: hash_delay(new_node, target_cursor, max_delay),
+                delay: delays.resolve(new_node, target_cursor),
                 polarity,
             });
             // Bidirectional attachment; polarity follows the source neuron.
@@ -319,7 +525,7 @@ pub fn generate_scale_free(
                 source: target_cursor as u32,
                 target: new_node as u32,
                 weight: hash_weight(target_cursor, new_node, 0.3, 0.6),
-                delay: hash_delay(target_cursor, new_node, max_delay),
+                delay: delays.resolve(target_cursor, new_node),
                 polarity: reverse_polarity,
             });
             degree[new_node] += 1;
@@ -355,10 +561,49 @@ fn select_preferential_targets(new_node: usize, m: usize, degree: &[usize]) -> V
 ///
 /// Neurons are arranged in layers; each neuron in layer `l` connects to each
 /// neuron in layer `l+1` with probability `inter_layer_p`.
+///
+/// Same as [`generate_layered_with_model`] with `max_delay == 0` mapped to
+/// `DelayModel::Fixed { delay: 0 }` and any other value to
+/// `DelayModel::UniformRandom { min_delay: 1, max_delay }`.
 pub fn generate_layered(
     layer_sizes: &[usize],
     inter_layer_p: f32,
     max_delay: u16,
+    inhibitory_fraction: f32,
+) -> Result<SynapticGraph> {
+    layered_graph(
+        layer_sizes,
+        inter_layer_p,
+        GeneratorDelay::legacy(max_delay),
+        inhibitory_fraction,
+    )
+}
+
+/// [`generate_layered`] with delays from a [`DelayModel`].
+///
+/// # Errors
+///
+/// - [`MeshError::InvalidConfig`] for `min_delay > max_delay`, or for any
+///   parameter [`generate_layered`] rejects.
+/// - [`MeshError::UnsupportedModel`] for [`DelayModel::DistanceProportional`].
+pub fn generate_layered_with_model(
+    layer_sizes: &[usize],
+    inter_layer_p: f32,
+    model: &DelayModel,
+    inhibitory_fraction: f32,
+) -> Result<SynapticGraph> {
+    layered_graph(
+        layer_sizes,
+        inter_layer_p,
+        GeneratorDelay::from_model(model)?,
+        inhibitory_fraction,
+    )
+}
+
+fn layered_graph(
+    layer_sizes: &[usize],
+    inter_layer_p: f32,
+    delays: GeneratorDelay,
     inhibitory_fraction: f32,
 ) -> Result<SynapticGraph> {
     if layer_sizes.is_empty() || layer_sizes.contains(&0) {
@@ -409,7 +654,7 @@ pub fn generate_layered(
                         source: src as u32,
                         target: tgt as u32,
                         weight: hash_weight(src, tgt, 0.3, 0.6),
-                        delay: hash_delay(src, tgt, max_delay),
+                        delay: delays.resolve(src, tgt),
                         polarity,
                     });
                 }

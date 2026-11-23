@@ -32,6 +32,9 @@
 //!    neuron positions, and [`topology::apply_dale_polarity`] to compute a
 //!    per-neuron excitatory/inhibitory split — both work on the inputs to
 //!    [`SynapticGraph::from_descriptors`], not on an already-built graph.
+//!    [`topology::assign_delays_from_model`] does the same from a
+//!    [`DelayModel`], which the `*_with_model` generators (for example
+//!    [`topology::generate_random_with_model`]) also accept.
 //! 4. [`SynapticGraph::topology_digest`] (or [`SynapticMesh::topology_digest`])
 //!    for a printable, versioned identifier of the logical graph, usable in
 //!    manifests and cross-runtime comparisons.
