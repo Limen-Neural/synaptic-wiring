@@ -6,12 +6,13 @@
 # to match this file whenever either side changes.
 
 initialize: |
-  # No toolchain argument: rustup installs the "active" toolchain, which
-  # inside this repo resolves via rust-toolchain.toml (the dev pin in
-  # REVIEW.md "MSRV / toolchain split"). rust-toolchain.toml also
-  # auto-selects it for every cargo/rustc invocation, so no `rustup
-  # default` is needed.
-  rustup toolchain install --component clippy --component rustfmt
+  # Read the dev toolchain pin straight out of rust-toolchain.toml so this
+  # can never drift to `stable` or whatever the image default happens to
+  # be; it fails loudly if the file is missing. Repo-level blueprint steps
+  # run in the cloned repository root, so the file is always present. No
+  # `rustup default` needed: rust-toolchain.toml auto-selects the toolchain
+  # for every cargo/rustc invocation inside the repo.
+  rustup toolchain install "$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)" --component clippy --component rustfmt
 
 maintenance: |
   cargo fetch --locked

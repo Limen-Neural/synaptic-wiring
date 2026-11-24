@@ -19,9 +19,9 @@ Limen-Neural/neuromod#214):
   toolchain installs, the packaging job, and the `cargo-deny` action) and
   `.github/workflows/coverage.yml` stay identical to each other (currently
   **1.99.0**) — but **not** to `rust-version`. `.devin/blueprint.yaml`
-  names no version at all: its bare `rustup toolchain install` resolves
-  the "active" toolchain through `rust-toolchain.toml`, so it follows this
-  pin automatically (and its UI copy must be kept in sync — the file is
+  names no version literal: its `initialize` reads `channel` out of
+  `rust-toolchain.toml` and installs exactly that, so it follows this pin
+  automatically (and its UI copy must be kept in sync — the file is
   reference-only). The `validate` job in
   `ci.yml` checks the dev pins agree with each other, that they are ≥
   `rust-version`, and that the README's MSRV line matches `rust-version`.
