@@ -214,8 +214,9 @@ wildcard.
   differ, enforced by a rewritten pin rule in REVIEW.md and a dedicated
   `msrv` CI job that builds and tests on `rust-version` (LIM-1573, #106;
   sweep Limen-Neural/neuromod#214).
-- **Toolchain**: Rust dev/CI pin raised from **1.98.1** to **1.100.0**
-  across `rust-toolchain.toml`, CI (toolchain install, packaging, and
+- **Toolchain**: Rust dev/CI pin raised from **1.98.1** to **1.99.0**
+  mid-cycle, then to **1.100.0** for this release, across
+  `rust-toolchain.toml`, CI (toolchain install, packaging, and
   `cargo-deny`), coverage workflow, `.devin/blueprint.yaml`, and the
   REVIEW/CLAUDE pin docs (LIM-1516, LIM-1615). `Cargo.toml`
   `rust-version` is governed by the MSRV entry above.

@@ -80,8 +80,8 @@ synaptic-wiring = "0.5"
 ```
 
 `0.5.0` is **experimental, pre-1.0**: the API is usable and tested, but minor
-releases may still contain breaking changes until 1.0. Pin an exact version
-(`= "0.5.0"`) if you need stability.
+releases may still contain breaking changes until 1.0. Once it is published,
+pin an exact version (`= "0.5.0"`) if you need stability.
 
 Until `0.5.0` is published to crates.io, depend on git instead — or pin
 `synaptic-wiring = "0.3"` for the last published release.
@@ -92,7 +92,7 @@ For git, track `main` or pin a tag:
 synaptic-wiring = { git = "https://github.com/Limen-Neural/synaptic-wiring" }
 ```
 
-Add `tag = "v0.5.0"` to pin a git dependency to a specific release instead of tracking `main` — see [releases](https://github.com/Limen-Neural/synaptic-wiring/releases) for the tags that exist today.
+Add `tag = "v0.5.0"` to pin a git dependency to a specific release instead of tracking `main` (the tag is created with the 0.5.0 release) — see [releases](https://github.com/Limen-Neural/synaptic-wiring/releases) for the tags that exist today.
 
 **MSRV:** Rust **1.85**. Runtime dependencies: `serde`, `sha2`.
 
