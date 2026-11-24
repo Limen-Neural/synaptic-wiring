@@ -58,7 +58,7 @@ Consequences worth knowing before editing:
 ## Process
 
 - Commit and PR titles carry a Linear identifier (`LIM-1234`) so Linear Release scanning attaches the issue. GitHub is the source of truth for issue state.
-- User-visible changes go under `[Unreleased]` in `CHANGELOG.md`. The crate is pre-1.0, so breaking changes are allowed in minor releases, but document the migration. The unreleased router signature changes already require the next release to be 0.5.0.
+- User-visible changes go under `[Unreleased]` in `CHANGELOG.md`. The crate is pre-1.0, so breaking changes are allowed in minor releases, but document the migration.
 - The published `.crate` holds only source, manifests, licenses, README and CHANGELOG. A new top-level file needs an `exclude` entry in `Cargo.toml` or an addition to the allowlist in `ci.yml`. `docs/` is excluded and currently holds only the README logo.
 - Third-party GitHub Actions are pinned to commit SHAs.
 - Code-quality bots shape file layout: Codacy flags long files and methods (the checkpoint test suite is split into small modules for that reason), so prefer splitting over growing a file.

@@ -209,7 +209,7 @@ wildcard.
   measured **1.85** (edition 2024 floor) now that the code no longer needs
   newer std APIs — `std::f64::consts::GOLDEN_RATIO` (1.94) became a local
   const and `usize::is_multiple_of` (1.87) became `k % 2 != 0`. The dev
-  toolchain stays pinned at **1.99.0** (`rust-toolchain.toml`, CI,
+  toolchain stays pinned at **1.100.0** (`rust-toolchain.toml`, CI,
   coverage); `rust-version` and the toolchain pin are now allowed to
   differ, enforced by a rewritten pin rule in REVIEW.md and a dedicated
   `msrv` CI job that builds and tests on `rust-version` (LIM-1573, #106;
