@@ -1,13 +1,19 @@
 # Devin environment blueprint for synaptic-wiring.
 #
 # This file is a version-controlled REFERENCE ONLY. Devin blueprints are not
-# auto-read from the repo — copy this content into Devin's
-# Settings > Environment > Blueprints > synaptic-wiring UI to apply it.
-# Keep this file in sync whenever the blueprint is changed in the UI.
+# auto-read from the repo — the copy in Devin's
+# Settings > Environment > Blueprints > synaptic-wiring UI must be updated
+# to match this file whenever either side changes.
 
 initialize: |
-  rustup toolchain install stable --component clippy --component rustfmt
-  rustup default stable
+  # Pinned to the dev toolchain in REVIEW.md "MSRV / toolchain split"
+  # (currently 1.99.0). Bump it together with rust-toolchain.toml and the
+  # CI pins, and re-apply the copy in Devin's blueprint UI. The literal
+  # version keeps the install location-independent: no rust-toolchain.toml
+  # lookup and no fallback to the image default. No `rustup default`
+  # needed: rust-toolchain.toml auto-selects the toolchain for every
+  # cargo/rustc invocation inside the repo.
+  rustup toolchain install 1.99.0 --component clippy --component rustfmt
 
 maintenance: |
   cargo fetch --locked
