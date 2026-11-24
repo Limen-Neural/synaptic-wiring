@@ -102,18 +102,6 @@ impl GeneratorDelay {
         }
     }
 
-    /// Delay rule the legacy `max_delay: u16` generator parameter stands for.
-    fn legacy(max_delay: u16) -> Self {
-        if max_delay == 0 {
-            Self::Fixed(0)
-        } else {
-            Self::Spread {
-                min: 1,
-                span: u32::from(max_delay),
-            }
-        }
-    }
-
     /// Deterministic delay for one synapse.
     fn resolve(self, src: usize, tgt: usize) -> u16 {
         match self {
@@ -124,6 +112,18 @@ impl GeneratorDelay {
                 let offset = math::round(h * span as f32).clamp(1.0, span as f32) as u32;
                 (u32::from(min) + offset - 1) as u16
             }
+        }
+    }
+}
+
+/// [`DelayModel`] the legacy `max_delay: u16` generator parameter stands for.
+fn legacy_model(max_delay: u16) -> DelayModel {
+    if max_delay == 0 {
+        DelayModel::Fixed { delay: 0 }
+    } else {
+        DelayModel::UniformRandom {
+            min_delay: 1,
+            max_delay,
         }
     }
 }
@@ -155,7 +155,7 @@ pub fn generate_random(
     max_delay: u16,
     inhibitory_fraction: f32,
 ) -> Result<SynapticGraph> {
-    random_graph(n, p, GeneratorDelay::legacy(max_delay), inhibitory_fraction)
+    generate_random_with_model(n, p, &legacy_model(max_delay), inhibitory_fraction)
 }
 
 /// [`generate_random`] with delays from a [`DelayModel`].
@@ -171,20 +171,7 @@ pub fn generate_random_with_model(
     model: &DelayModel,
     inhibitory_fraction: f32,
 ) -> Result<SynapticGraph> {
-    random_graph(
-        n,
-        p,
-        GeneratorDelay::from_model(model)?,
-        inhibitory_fraction,
-    )
-}
-
-fn random_graph(
-    n: usize,
-    p: f32,
-    delays: GeneratorDelay,
-    inhibitory_fraction: f32,
-) -> Result<SynapticGraph> {
+    let delays = GeneratorDelay::from_model(model)?;
     if !(0.0..=1.0).contains(&p) {
         return Err(MeshError::InvalidConfig(format!(
             "connection probability p={p} must be in [0, 1]"
@@ -261,13 +248,7 @@ pub fn generate_small_world(
     max_delay: u16,
     inhibitory_fraction: f32,
 ) -> Result<SynapticGraph> {
-    small_world_graph(
-        n,
-        k,
-        beta,
-        GeneratorDelay::legacy(max_delay),
-        inhibitory_fraction,
-    )
+    generate_small_world_with_model(n, k, beta, &legacy_model(max_delay), inhibitory_fraction)
 }
 
 /// [`generate_small_world`] with delays from a [`DelayModel`].
@@ -284,22 +265,7 @@ pub fn generate_small_world_with_model(
     model: &DelayModel,
     inhibitory_fraction: f32,
 ) -> Result<SynapticGraph> {
-    small_world_graph(
-        n,
-        k,
-        beta,
-        GeneratorDelay::from_model(model)?,
-        inhibitory_fraction,
-    )
-}
-
-fn small_world_graph(
-    n: usize,
-    k: usize,
-    beta: f32,
-    delays: GeneratorDelay,
-    inhibitory_fraction: f32,
-) -> Result<SynapticGraph> {
+    let delays = GeneratorDelay::from_model(model)?;
     if n < 3 {
         return Err(MeshError::InvalidConfig(
             "small-world requires n ≥ 3".into(),
@@ -418,13 +384,7 @@ pub fn generate_scale_free(
     max_delay: u16,
     inhibitory_fraction: f32,
 ) -> Result<SynapticGraph> {
-    scale_free_graph(
-        n,
-        m0,
-        m,
-        GeneratorDelay::legacy(max_delay),
-        inhibitory_fraction,
-    )
+    generate_scale_free_with_model(n, m0, m, &legacy_model(max_delay), inhibitory_fraction)
 }
 
 /// [`generate_scale_free`] with delays from a [`DelayModel`].
@@ -441,22 +401,7 @@ pub fn generate_scale_free_with_model(
     model: &DelayModel,
     inhibitory_fraction: f32,
 ) -> Result<SynapticGraph> {
-    scale_free_graph(
-        n,
-        m0,
-        m,
-        GeneratorDelay::from_model(model)?,
-        inhibitory_fraction,
-    )
-}
-
-fn scale_free_graph(
-    n: usize,
-    m0: usize,
-    m: usize,
-    delays: GeneratorDelay,
-    inhibitory_fraction: f32,
-) -> Result<SynapticGraph> {
+    let delays = GeneratorDelay::from_model(model)?;
     if m0 < 2 || m0 > n {
         return Err(MeshError::InvalidConfig(format!(
             "m0={m0} must be in [2, n]"
@@ -571,10 +516,10 @@ pub fn generate_layered(
     max_delay: u16,
     inhibitory_fraction: f32,
 ) -> Result<SynapticGraph> {
-    layered_graph(
+    generate_layered_with_model(
         layer_sizes,
         inter_layer_p,
-        GeneratorDelay::legacy(max_delay),
+        &legacy_model(max_delay),
         inhibitory_fraction,
     )
 }
@@ -592,20 +537,7 @@ pub fn generate_layered_with_model(
     model: &DelayModel,
     inhibitory_fraction: f32,
 ) -> Result<SynapticGraph> {
-    layered_graph(
-        layer_sizes,
-        inter_layer_p,
-        GeneratorDelay::from_model(model)?,
-        inhibitory_fraction,
-    )
-}
-
-fn layered_graph(
-    layer_sizes: &[usize],
-    inter_layer_p: f32,
-    delays: GeneratorDelay,
-    inhibitory_fraction: f32,
-) -> Result<SynapticGraph> {
+    let delays = GeneratorDelay::from_model(model)?;
     if layer_sizes.is_empty() || layer_sizes.contains(&0) {
         return Err(MeshError::InvalidConfig(
             "all layer sizes must be greater than 0".into(),
