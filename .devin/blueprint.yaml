@@ -8,11 +8,18 @@
 initialize: |
   # Read the dev toolchain pin straight out of rust-toolchain.toml so this
   # can never drift to `stable` or whatever the image default happens to
-  # be; it fails loudly if the file is missing. Repo-level blueprint steps
-  # run in the cloned repository root, so the file is always present. No
-  # `rustup default` needed: rust-toolchain.toml auto-selects the toolchain
-  # for every cargo/rustc invocation inside the repo.
-  rustup toolchain install "$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)" --component clippy --component rustfmt
+  # be; it fails loudly if the file is missing or the pin can't be
+  # parsed. The extraction mirrors the pin check in ci.yml. Repo-level
+  # blueprint steps run in the cloned repository root, so the file is
+  # always present. No `rustup default` needed: rust-toolchain.toml
+  # auto-selects the toolchain for every cargo/rustc invocation inside
+  # the repo.
+  channel=$(grep -m1 '^channel' rust-toolchain.toml | sed -E 's/.*"([^"]+)".*/\1/' | tr -d '\r')
+  if [ -z "$channel" ]; then
+    printf '%s\n' 'Could not read the Rust channel from rust-toolchain.toml' >&2
+    exit 1
+  fi
+  rustup toolchain install "$channel" --component clippy --component rustfmt
 
 maintenance: |
   cargo fetch --locked
