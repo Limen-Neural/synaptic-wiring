@@ -12,7 +12,6 @@ description = "SNN wiring, topology, temporal delays, sparse connectivity, and r
 authors = ["Raul Cardenas Montoya <montoyaraul34@gmail.com>"]
 repository = "https://github.com/Limen-Neural/synaptic-wiring"
 documentation = "https://docs.rs/synaptic-wiring"
-homepage = "https://docs.rs/synaptic-wiring"
 readme = "README.md"
 keywords = ["snn", "spiking", "neuromorphic", "topology", "routing"]
 categories = ["science", "algorithms", "simulation"]
