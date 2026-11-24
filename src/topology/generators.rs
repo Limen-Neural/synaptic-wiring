@@ -6,6 +6,26 @@
 //! following the corinth-canal pattern — deterministic from neuron index
 //! alone, reproducible across runs.
 //!
+//! # Delay models
+//!
+//! Each generator has a `*_with_model` sibling that takes a [`DelayModel`]
+//! instead of a raw `max_delay`:
+//!
+//! - [`DelayModel::Fixed`] gives every synapse the same delay.
+//! - [`DelayModel::UniformRandom`] spreads delays over
+//!   `[min_delay, max_delay]` with the same deterministic index hash the
+//!   legacy generators use: `min_delay - 1 + h(span)` where
+//!   `span = max_delay - min_delay + 1` and `h(span) ∈ [1, span]`. With
+//!   `min_delay == 1` this is exactly the legacy spread.
+//! - [`DelayModel::DistanceProportional`] needs neuron positions, which the
+//!   generators do not have, so it is rejected with
+//!   [`MeshError::UnsupportedModel`]; use
+//!   [`assign_delays_from_model`](crate::topology::assign_delays_from_model).
+//!
+//! The legacy generators keep their `max_delay: u16` signatures: `0` behaves
+//! as `Fixed { delay: 0 }` and any other value as
+//! `UniformRandom { min_delay: 1, max_delay }`, so their output is unchanged.
+//!
 //! # References
 //!
 //! - Erdős, P. & Rényi, A. (1959). *On random graphs.*
@@ -19,7 +39,7 @@ use alloc::{format, vec, vec::Vec};
 use crate::error::{MeshError, Result};
 use crate::math;
 use crate::topology::graph::SynapticGraph;
-use crate::types::{ConnectionModel, Polarity, SynapseDescriptor, TopologyConfig};
+use crate::types::{ConnectionModel, DelayModel, Polarity, SynapseDescriptor, TopologyConfig};
 
 // ── Deterministic hash helpers ────────────────────────────────────────────────
 
@@ -41,14 +61,128 @@ fn hash_weight(src: usize, tgt: usize, base: f32, spread: f32) -> f32 {
     base + hash_pair(src * 97 + 13, tgt * 53 + 7) * spread
 }
 
-/// Deterministic delay from neuron pair.
-fn hash_delay(src: usize, tgt: usize, max_delay: u16) -> u16 {
-    if max_delay == 0 {
-        return 0;
+/// Delay rule of a validated [`DelayModel`], resolved per synapse.
+#[derive(Debug, Clone, Copy)]
+enum GeneratorDelay {
+    Fixed(u16),
+    /// `min - 1 + h(span)` with `h(span) ∈ [1, span]`; `span >= 1` and
+    /// `min + span - 1` fits in `u16`.
+    Spread {
+        min: u16,
+        span: u32,
+    },
+}
+
+impl GeneratorDelay {
+    fn from_model(model: &DelayModel) -> Result<Self> {
+        match *model {
+            DelayModel::Fixed { delay } => Ok(Self::Fixed(delay)),
+            DelayModel::UniformRandom {
+                min_delay,
+                max_delay,
+            } => {
+                check_delay_range(min_delay, max_delay)?;
+                Ok(Self::Spread {
+                    min: min_delay,
+                    span: u32::from(max_delay) - u32::from(min_delay) + 1,
+                })
+            }
+            DelayModel::DistanceProportional {
+                min_delay,
+                max_delay,
+                ..
+            } => {
+                check_delay_range(min_delay, max_delay)?;
+                Err(MeshError::UnsupportedModel(
+                    "DelayModel::DistanceProportional needs neuron positions, which \
+                     generators do not have; use topology::assign_delays_from_model"
+                        .into(),
+                ))
+            }
+        }
     }
-    let h = hash_pair(src * 71 + 3, tgt * 37 + 11);
-    // `max_delay >= 1` here, so the clamp bounds are ordered.
-    math::round(h * max_delay as f32).clamp(1.0, max_delay as f32) as u16
+
+    /// Deterministic delay for one synapse.
+    fn resolve(self, src: usize, tgt: usize) -> u16 {
+        match self {
+            Self::Fixed(delay) => delay,
+            Self::Spread { min, span } => {
+                let h = hash_pair(src * 71 + 3, tgt * 37 + 11);
+                // `span >= 1`, so the clamp bounds are ordered.
+                let offset = math::round(h * span as f32).clamp(1.0, span as f32) as u32;
+                (u32::from(min) + offset - 1) as u16
+            }
+        }
+    }
+}
+
+/// [`DelayModel`] the legacy `max_delay: u16` generator parameter stands for.
+fn legacy_model(max_delay: u16) -> DelayModel {
+    if max_delay == 0 {
+        DelayModel::Fixed { delay: 0 }
+    } else {
+        DelayModel::UniformRandom {
+            min_delay: 1,
+            max_delay,
+        }
+    }
+}
+
+fn check_delay_range(min_delay: u16, max_delay: u16) -> Result<()> {
+    if min_delay > max_delay {
+        return Err(MeshError::InvalidConfig(format!(
+            "delay model min_delay={min_delay} must be <= max_delay={max_delay}"
+        )));
+    }
+    Ok(())
+}
+
+fn check_unit_interval(name: &str, value: f32) -> Result<()> {
+    if (0.0..=1.0).contains(&value) {
+        Ok(())
+    } else {
+        Err(MeshError::InvalidConfig(format!(
+            "{name}={value} must be in [0, 1]"
+        )))
+    }
+}
+
+/// `(base, spread)` of [`hash_weight`].
+const DEFAULT_WEIGHT: (f32, f32) = (0.3, 0.6);
+const SMALL_WORLD_WEIGHT: (f32, f32) = (0.4, 0.5);
+
+/// Builds generator synapses: Dale's-law polarity from the source neuron,
+/// hashed weight and resolved delay.
+#[derive(Debug, Clone, Copy)]
+struct SynapseFactory {
+    delays: GeneratorDelay,
+    inhibitory_cutoff: usize,
+    weight: (f32, f32),
+}
+
+impl SynapseFactory {
+    fn new(delays: GeneratorDelay, n: usize, inhibitory_fraction: f32, weight: (f32, f32)) -> Self {
+        Self {
+            delays,
+            inhibitory_cutoff: (n as f32 * inhibitory_fraction) as usize,
+            weight,
+        }
+    }
+
+    fn synapse(&self, src: usize, tgt: usize) -> SynapseDescriptor {
+        let polarity = if src < self.inhibitory_cutoff {
+            Polarity::Inhibitory
+        } else {
+            Polarity::Excitatory
+        };
+        SynapseDescriptor {
+            source: src as u32,
+            target: tgt as u32,
+            weight: hash_weight(src, tgt, self.weight.0, self.weight.1),
+            delay: self.delays.resolve(src, tgt),
+            polarity,
+        }
+    }
 }
 
 // ── Generators ────────────────────────────────────────────────────────────────
@@ -59,51 +193,45 @@ fn hash_delay(src: usize, tgt: usize, max_delay: u16) -> u16 {
 /// probability `p`. Self-connections are not created.
 ///
 /// Deterministic: the same `(n, p)` always produces the same graph.
+///
+/// Same as [`generate_random_with_model`] with `max_delay == 0` mapped to
+/// `DelayModel::Fixed { delay: 0 }` and any other value to
+/// `DelayModel::UniformRandom { min_delay: 1, max_delay }`.
 pub fn generate_random(
     n: usize,
     p: f32,
     max_delay: u16,
     inhibitory_fraction: f32,
 ) -> Result<SynapticGraph> {
-    if !(0.0..=1.0).contains(&p) {
-        return Err(MeshError::InvalidConfig(format!(
-            "connection probability p={p} must be in [0, 1]"
-        )));
-    }
-    if !(0.0..=1.0).contains(&inhibitory_fraction) {
-        return Err(MeshError::InvalidConfig(format!(
-            "inhibitory fraction={inhibitory_fraction} must be in [0, 1]"
-        )));
-    }
+    generate_random_with_model(n, p, &legacy_model(max_delay), inhibitory_fraction)
+}
+
+/// [`generate_random`] with delays from a [`DelayModel`].
+///
+/// # Errors
+///
+/// - [`MeshError::InvalidConfig`] for `min_delay > max_delay`, or for any
+///   parameter [`generate_random`] rejects.
+/// - [`MeshError::UnsupportedModel`] for [`DelayModel::DistanceProportional`].
+pub fn generate_random_with_model(
+    n: usize,
+    p: f32,
+    model: &DelayModel,
+    inhibitory_fraction: f32,
+) -> Result<SynapticGraph> {
+    let delays = GeneratorDelay::from_model(model)?;
+    check_unit_interval("connection probability p", p)?;
+    check_unit_interval("inhibitory fraction", inhibitory_fraction)?;
     if n == 0 {
         return Err(MeshError::InvalidConfig("neuron count must be ≥ 1".into()));
     }
 
-    let inhibitory_cutoff = (n as f32 * inhibitory_fraction) as usize;
-    let mut descriptors = Vec::new();
-
-    for src in 0..n {
-        let polarity = if src < inhibitory_cutoff {
-            Polarity::Inhibitory
-        } else {
-            Polarity::Excitatory
-        };
-
-        for tgt in 0..n {
-            if src == tgt {
-                continue;
-            }
-            if hash_pair(src, tgt) < p {
-                descriptors.push(SynapseDescriptor {
-                    source: src as u32,
-                    target: tgt as u32,
-                    weight: hash_weight(src, tgt, 0.3, 0.6),
-                    delay: hash_delay(src, tgt, max_delay),
-                    polarity,
-                });
-            }
-        }
-    }
+    let synapses = SynapseFactory::new(delays, n, inhibitory_fraction, DEFAULT_WEIGHT);
+    let descriptors: Vec<SynapseDescriptor> = (0..n)
+        .flat_map(|src| (0..n).map(move |tgt| (src, tgt)))
+        .filter(|&(src, tgt)| src != tgt && hash_pair(src, tgt) < p)
+        .map(|(src, tgt)| synapses.synapse(src, tgt))
+        .collect();
 
     SynapticGraph::from_descriptors(n, &descriptors)
 }
@@ -130,6 +258,10 @@ pub fn generate_random(
 ///
 /// Watts, D. J. & Strogatz, S. H. (1998). *Collective dynamics of
 /// 'small-world' networks.* Nature, 393, 440–442.
+///
+/// Same as [`generate_small_world_with_model`] with `max_delay == 0` mapped to
+/// `DelayModel::Fixed { delay: 0 }` and any other value to
+/// `DelayModel::UniformRandom { min_delay: 1, max_delay }`.
 pub fn generate_small_world(
     n: usize,
     k: usize,
@@ -137,6 +269,41 @@ pub fn generate_small_world(
     max_delay: u16,
     inhibitory_fraction: f32,
 ) -> Result<SynapticGraph> {
+    generate_small_world_with_model(n, k, beta, &legacy_model(max_delay), inhibitory_fraction)
+}
+
+/// [`generate_small_world`] with delays from a [`DelayModel`].
+///
+/// # Errors
+///
+/// - [`MeshError::InvalidConfig`] for `min_delay > max_delay`, or for any
+///   parameter [`generate_small_world`] rejects.
+/// - [`MeshError::UnsupportedModel`] for [`DelayModel::DistanceProportional`].
+pub fn generate_small_world_with_model(
+    n: usize,
+    k: usize,
+    beta: f32,
+    model: &DelayModel,
+    inhibitory_fraction: f32,
+) -> Result<SynapticGraph> {
+    let delays = GeneratorDelay::from_model(model)?;
+    check_small_world(n, k)?;
+    check_unit_interval("beta", beta)?;
+    check_unit_interval("inhibitory fraction", inhibitory_fraction)?;
+
+    let synapses = SynapseFactory::new(delays, n, inhibitory_fraction, SMALL_WORLD_WEIGHT);
+    let mut descriptors = Vec::with_capacity(n * k);
+    for src in 0..n {
+        for tgt in small_world_targets(src, n, k / 2, beta) {
+            debug_assert_ne!(tgt, src, "small-world must not create a self-loop");
+            descriptors.push(synapses.synapse(src, tgt));
+        }
+    }
+
+    SynapticGraph::from_descriptors(n, &descriptors)
+}
+
+fn check_small_world(n: usize, k: usize) -> Result<()> {
     if n < 3 {
         return Err(MeshError::InvalidConfig(
             "small-world requires n ≥ 3".into(),
@@ -147,54 +314,25 @@ pub fn generate_small_world(
             "k={k} must be even and in [2, n-1]"
         )));
     }
-    if !(0.0..=1.0).contains(&beta) {
-        return Err(MeshError::InvalidConfig(format!(
-            "beta={beta} must be in [0, 1]"
-        )));
-    }
-    if !(0.0..=1.0).contains(&inhibitory_fraction) {
-        return Err(MeshError::InvalidConfig(format!(
-            "inhibitory fraction={inhibitory_fraction} must be in [0, 1]"
-        )));
-    }
+    Ok(())
+}
 
-    let inhibitory_cutoff = (n as f32 * inhibitory_fraction) as usize;
-    let half_k = k / 2;
-    let mut descriptors = Vec::new();
-
-    for src in 0..n {
-        let polarity = if src < inhibitory_cutoff {
-            Polarity::Inhibitory
-        } else {
-            Polarity::Excitatory
-        };
-
-        let mut targets = Vec::with_capacity(k);
-        for offset in 1..=half_k {
-            targets.push((src + offset) % n);
-            targets.push((src + n - offset) % n);
-        }
-
-        for i in 0..targets.len() {
-            let salt = i + 1;
-            if hash_pair(src * 131 + salt, targets[i] * 79) < beta {
-                targets[i] = rewire_small_world_target(src, &targets, targets[i], n, salt);
-            }
-        }
-
-        for tgt in targets {
-            debug_assert_ne!(tgt, src, "small-world must not create a self-loop");
-            descriptors.push(SynapseDescriptor {
-                source: src as u32,
-                target: tgt as u32,
-                weight: hash_weight(src, tgt, 0.4, 0.5),
-                delay: hash_delay(src, tgt, max_delay),
-                polarity,
-            });
-        }
+/// Ring-lattice targets of `src` (`half_k` each side), each rewired with
+/// probability `beta`.
+fn small_world_targets(src: usize, n: usize, half_k: usize, beta: f32) -> Vec<usize> {
+    let mut targets = Vec::with_capacity(2 * half_k);
+    for offset in 1..=half_k {
+        targets.push((src + offset) % n);
+        targets.push((src + n - offset) % n);
     }
 
-    SynapticGraph::from_descriptors(n, &descriptors)
+    for i in 0..targets.len() {
+        let salt = i + 1;
+        if hash_pair(src * 131 + salt, targets[i] * 79) < beta {
+            targets[i] = rewire_small_world_target(src, &targets, targets[i], n, salt);
+        }
+    }
+    targets
 }
 
 /// Replace `replacing` with a deterministic unused target, or keep it when
@@ -244,6 +382,10 @@ fn rewire_small_world_target(
 ///
 /// Barabási, A.-L. & Albert, R. (1999). *Emergence of scaling in random
 /// networks.* Science, 286, 509–512.
+///
+/// Same as [`generate_scale_free_with_model`] with `max_delay == 0` mapped to
+/// `DelayModel::Fixed { delay: 0 }` and any other value to
+/// `DelayModel::UniformRandom { min_delay: 1, max_delay }`.
 pub fn generate_scale_free(
     n: usize,
     m0: usize,
@@ -251,6 +393,53 @@ pub fn generate_scale_free(
     max_delay: u16,
     inhibitory_fraction: f32,
 ) -> Result<SynapticGraph> {
+    generate_scale_free_with_model(n, m0, m, &legacy_model(max_delay), inhibitory_fraction)
+}
+
+/// [`generate_scale_free`] with delays from a [`DelayModel`].
+///
+/// # Errors
+///
+/// - [`MeshError::InvalidConfig`] for `min_delay > max_delay`, or for any
+///   parameter [`generate_scale_free`] rejects.
+/// - [`MeshError::UnsupportedModel`] for [`DelayModel::DistanceProportional`].
+pub fn generate_scale_free_with_model(
+    n: usize,
+    m0: usize,
+    m: usize,
+    model: &DelayModel,
+    inhibitory_fraction: f32,
+) -> Result<SynapticGraph> {
+    let delays = GeneratorDelay::from_model(model)?;
+    check_scale_free(n, m0, m)?;
+    check_unit_interval("inhibitory fraction", inhibitory_fraction)?;
+
+    let synapses = SynapseFactory::new(delays, n, inhibitory_fraction, DEFAULT_WEIGHT);
+
+    // Seed: fully connect the first m0 nodes
+    let mut descriptors: Vec<SynapseDescriptor> = (0..m0)
+        .flat_map(|i| (0..m0).map(move |j| (i, j)))
+        .filter(|&(i, j)| i != j)
+        .map(|(i, j)| synapses.synapse(i, j))
+        .collect();
+    let mut degree = vec![0usize; n];
+    degree[..m0].fill(m0 - 1);
+
+    // Growth phase: add nodes m0..n
+    for new_node in m0..n {
+        for target in select_preferential_targets(new_node, m, &degree) {
+            // Bidirectional attachment; polarity follows the source neuron.
+            descriptors.push(synapses.synapse(new_node, target));
+            descriptors.push(synapses.synapse(target, new_node));
+            degree[new_node] += 1;
+            degree[target] += 1;
+        }
+    }
+
+    SynapticGraph::from_descriptors(n, &descriptors)
+}
+
+fn check_scale_free(n: usize, m0: usize, m: usize) -> Result<()> {
     if m0 < 2 || m0 > n {
         return Err(MeshError::InvalidConfig(format!(
             "m0={m0} must be in [2, n]"
@@ -261,73 +450,7 @@ pub fn generate_scale_free(
             "m={m} must be in [1, m0]"
         )));
     }
-    if !(0.0..=1.0).contains(&inhibitory_fraction) {
-        return Err(MeshError::InvalidConfig(format!(
-            "inhibitory fraction={inhibitory_fraction} must be in [0, 1]"
-        )));
-    }
-
-    let inhibitory_cutoff = (n as f32 * inhibitory_fraction) as usize;
-    let mut descriptors = Vec::new();
-    let mut degree = vec![0usize; n];
-
-    // Seed: fully connect the first m0 nodes
-    for (i, deg) in degree.iter_mut().enumerate().take(m0) {
-        let polarity = if i < inhibitory_cutoff {
-            Polarity::Inhibitory
-        } else {
-            Polarity::Excitatory
-        };
-        for j in 0..m0 {
-            if i != j {
-                descriptors.push(SynapseDescriptor {
-                    source: i as u32,
-                    target: j as u32,
-                    weight: hash_weight(i, j, 0.3, 0.6),
-                    delay: hash_delay(i, j, max_delay),
-                    polarity,
-                });
-                *deg += 1;
-            }
-        }
-    }
-
-    // Growth phase: add nodes m0..n
-    for new_node in m0..n {
-        let polarity = if new_node < inhibitory_cutoff {
-            Polarity::Inhibitory
-        } else {
-            Polarity::Excitatory
-        };
-
-        let older_targets = select_preferential_targets(new_node, m, &degree);
-        for target_cursor in older_targets {
-            descriptors.push(SynapseDescriptor {
-                source: new_node as u32,
-                target: target_cursor as u32,
-                weight: hash_weight(new_node, target_cursor, 0.3, 0.6),
-                delay: hash_delay(new_node, target_cursor, max_delay),
-                polarity,
-            });
-            // Bidirectional attachment; polarity follows the source neuron.
-            let reverse_polarity = if target_cursor < inhibitory_cutoff {
-                Polarity::Inhibitory
-            } else {
-                Polarity::Excitatory
-            };
-            descriptors.push(SynapseDescriptor {
-                source: target_cursor as u32,
-                target: new_node as u32,
-                weight: hash_weight(target_cursor, new_node, 0.3, 0.6),
-                delay: hash_delay(target_cursor, new_node, max_delay),
-                polarity: reverse_polarity,
-            });
-            degree[new_node] += 1;
-            degree[target_cursor] += 1;
-        }
-    }
-
-    SynapticGraph::from_descriptors(n, &descriptors)
+    Ok(())
 }
 
 /// Bounded weighted sample of `m` distinct older nodes (`0..new_node`).
@@ -355,66 +478,60 @@ fn select_preferential_targets(new_node: usize, m: usize, degree: &[usize]) -> V
 ///
 /// Neurons are arranged in layers; each neuron in layer `l` connects to each
 /// neuron in layer `l+1` with probability `inter_layer_p`.
+///
+/// Same as [`generate_layered_with_model`] with `max_delay == 0` mapped to
+/// `DelayModel::Fixed { delay: 0 }` and any other value to
+/// `DelayModel::UniformRandom { min_delay: 1, max_delay }`.
 pub fn generate_layered(
     layer_sizes: &[usize],
     inter_layer_p: f32,
     max_delay: u16,
     inhibitory_fraction: f32,
 ) -> Result<SynapticGraph> {
+    generate_layered_with_model(
+        layer_sizes,
+        inter_layer_p,
+        &legacy_model(max_delay),
+        inhibitory_fraction,
+    )
+}
+
+/// [`generate_layered`] with delays from a [`DelayModel`].
+///
+/// # Errors
+///
+/// - [`MeshError::InvalidConfig`] for `min_delay > max_delay`, or for any
+///   parameter [`generate_layered`] rejects.
+/// - [`MeshError::UnsupportedModel`] for [`DelayModel::DistanceProportional`].
+pub fn generate_layered_with_model(
+    layer_sizes: &[usize],
+    inter_layer_p: f32,
+    model: &DelayModel,
+    inhibitory_fraction: f32,
+) -> Result<SynapticGraph> {
+    let delays = GeneratorDelay::from_model(model)?;
     if layer_sizes.is_empty() || layer_sizes.contains(&0) {
         return Err(MeshError::InvalidConfig(
             "all layer sizes must be greater than 0".into(),
         ));
     }
-    if !(0.0..=1.0).contains(&inter_layer_p) {
-        return Err(MeshError::InvalidConfig(format!(
-            "inter_layer_p={inter_layer_p} must be in [0, 1]"
-        )));
-    }
-    if !(0.0..=1.0).contains(&inhibitory_fraction) {
-        return Err(MeshError::InvalidConfig(format!(
-            "inhibitory fraction={inhibitory_fraction} must be in [0, 1]"
-        )));
-    }
+    check_unit_interval("inter_layer_p", inter_layer_p)?;
+    check_unit_interval("inhibitory fraction", inhibitory_fraction)?;
 
     let n: usize = layer_sizes.iter().sum();
-
-    let inhibitory_cutoff = (n as f32 * inhibitory_fraction) as usize;
+    let synapses = SynapseFactory::new(delays, n, inhibitory_fraction, DEFAULT_WEIGHT);
     let mut descriptors = Vec::new();
-
-    // Compute layer offsets
-    let mut offsets = Vec::with_capacity(layer_sizes.len());
-    let mut offset = 0usize;
-    for &size in layer_sizes {
-        offsets.push(offset);
-        offset += size;
-    }
-
-    for layer_idx in 0..layer_sizes.len().saturating_sub(1) {
-        let src_start = offsets[layer_idx];
-        let src_end = src_start + layer_sizes[layer_idx];
-        let tgt_start = offsets[layer_idx + 1];
-        let tgt_end = tgt_start + layer_sizes[layer_idx + 1];
-
-        for src in src_start..src_end {
-            let polarity = if src < inhibitory_cutoff {
-                Polarity::Inhibitory
-            } else {
-                Polarity::Excitatory
-            };
-
-            for tgt in tgt_start..tgt_end {
-                if hash_pair(src * 67 + layer_idx, tgt * 43) < inter_layer_p {
-                    descriptors.push(SynapseDescriptor {
-                        source: src as u32,
-                        target: tgt as u32,
-                        weight: hash_weight(src, tgt, 0.3, 0.6),
-                        delay: hash_delay(src, tgt, max_delay),
-                        polarity,
-                    });
-                }
-            }
-        }
+    let mut src_start = 0usize;
+    for (layer_idx, pair) in layer_sizes.windows(2).enumerate() {
+        let tgt_start = src_start + pair[0];
+        let targets = tgt_start..tgt_start + pair[1];
+        descriptors.extend(
+            (src_start..tgt_start)
+                .flat_map(|src| targets.clone().map(move |tgt| (src, tgt)))
+                .filter(|&(src, tgt)| hash_pair(src * 67 + layer_idx, tgt * 43) < inter_layer_p)
+                .map(|(src, tgt)| synapses.synapse(src, tgt)),
+        );
+        src_start = tgt_start;
     }
 
     SynapticGraph::from_descriptors(n, &descriptors)

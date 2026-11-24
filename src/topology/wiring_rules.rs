@@ -11,7 +11,7 @@ use alloc::{format, vec::Vec};
 use crate::error::MeshError;
 use crate::math;
 use crate::topology::graph::SynapticGraph;
-use crate::types::{DelayTicks, Polarity, SynapseDescriptor};
+use crate::types::{DelayModel, DelayTicks, NeuronId, Polarity, SynapseDescriptor};
 
 /// Apply Dale's law to a graph: all outgoing synapses from each neuron
 /// share a single polarity (excitatory or inhibitory).
@@ -102,6 +102,123 @@ pub fn assign_delays(
                 % (max_delay as usize + 1);
             desc.delay = (mixed as u16).max(1);
         }
+    }
+}
+
+/// Assign axonal propagation delays from a [`DelayModel`].
+///
+/// - [`DelayModel::Fixed`] sets every delay to `delay` and ignores
+///   `positions`; `Fixed { delay: 0 }` is same-tick delivery.
+/// - [`DelayModel::DistanceProportional`] with positions uses
+///   `clamp(round(distance / speed), min_delay, max_delay)`. Without positions
+///   it falls back to the index spread below over `[min_delay, max_delay]`.
+/// - [`DelayModel::UniformRandom`] uses a deterministic index spread, never
+///   an RNG: `min_delay - 1 + max((s * 71 + t * 37 + 13) % (span + 1), 1)`
+///   with `span = max_delay - min_delay + 1`.
+///
+/// With `min_delay == 1` and `max_delay >= 1`, `DistanceProportional` and
+/// `UniformRandom` reproduce [`assign_delays`] with the same `speed` and
+/// `max_delay` exactly (with and without positions respectively).
+///
+/// This function is infallible: when `min_delay > max_delay` the model
+/// behaves as `Fixed { delay: min_delay }`. That includes
+/// `{ min_delay: 1, max_delay: 0 }`, which sets every delay to 1, whereas
+/// `assign_delays(.., max_delay = 0)` sets every delay to 0; use
+/// `Fixed { delay: 0 }` for same-tick delivery.
+///
+/// # Panics
+///
+/// Like [`assign_delays`], panics if `positions` is shorter than a
+/// descriptor's `source + 1` or `target + 1` on the distance path. The
+/// check runs before any delay is written, so a panic leaves `descriptors`
+/// unchanged.
+pub fn assign_delays_from_model(
+    descriptors: &mut [SynapseDescriptor],
+    positions: Option<&[[f32; 3]]>,
+    model: &DelayModel,
+) {
+    match *model {
+        DelayModel::Fixed { delay } => set_all_delays(descriptors, delay),
+        DelayModel::UniformRandom {
+            min_delay,
+            max_delay,
+        }
+        | DelayModel::DistanceProportional {
+            min_delay,
+            max_delay,
+            ..
+        } if min_delay > max_delay => set_all_delays(descriptors, min_delay),
+        DelayModel::UniformRandom {
+            min_delay,
+            max_delay,
+        } => index_spread_delays(descriptors, DelayRange::new(min_delay, max_delay)),
+        DelayModel::DistanceProportional {
+            speed,
+            min_delay,
+            max_delay,
+        } => {
+            let range = DelayRange::new(min_delay, max_delay);
+            match positions {
+                Some(pos) => distance_delays(descriptors, pos, speed, range),
+                None => index_spread_delays(descriptors, range),
+            }
+        }
+    }
+}
+
+fn set_all_delays(descriptors: &mut [SynapseDescriptor], delay: DelayTicks) {
+    for desc in descriptors.iter_mut() {
+        desc.delay = delay;
+    }
+}
+
+/// Inclusive delay range with `min <= max`.
+#[derive(Debug, Clone, Copy)]
+struct DelayRange {
+    min: DelayTicks,
+    max: DelayTicks,
+}
+
+impl DelayRange {
+    fn new(min: DelayTicks, max: DelayTicks) -> Self {
+        debug_assert!(min <= max);
+        Self { min, max }
+    }
+}
+
+fn index_spread_delays(descriptors: &mut [SynapseDescriptor], range: DelayRange) {
+    let span = u64::from(range.max) - u64::from(range.min) + 1;
+    for desc in descriptors.iter_mut() {
+        let mixed = (u64::from(desc.source) * 71 + u64::from(desc.target) * 37 + 13) % (span + 1);
+        desc.delay = (u64::from(range.min) + mixed.max(1) - 1) as DelayTicks;
+    }
+}
+
+fn distance_delays(
+    descriptors: &mut [SynapseDescriptor],
+    positions: &[[f32; 3]],
+    speed: f32,
+    range: DelayRange,
+) {
+    let in_bounds = |id: NeuronId| (id as usize) < positions.len();
+    assert!(
+        descriptors
+            .iter()
+            .all(|d| in_bounds(d.source) && in_bounds(d.target)),
+        "positions has {} entries, fewer than a descriptor's source or target index requires",
+        positions.len()
+    );
+    for desc in descriptors.iter_mut() {
+        let src_pos = &positions[desc.source as usize];
+        let tgt_pos = &positions[desc.target as usize];
+        let (dx, dy, dz) = (
+            src_pos[0] - tgt_pos[0],
+            src_pos[1] - tgt_pos[1],
+            src_pos[2] - tgt_pos[2],
+        );
+        let dist = math::sqrt(dx * dx + dy * dy + dz * dz);
+        let delay = math::round(dist / speed.max(1e-6)) as u16;
+        desc.delay = delay.clamp(range.min, range.max);
     }
 }
 

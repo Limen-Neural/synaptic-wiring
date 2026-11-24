@@ -225,18 +225,30 @@ impl Default for ConnectionModel {
 // ── Delay model ───────────────────────────────────────────────────────────────
 
 /// Strategy for assigning axonal delays to synapses.
+///
+/// Consumed by the `*_with_model` topology generators (for example
+/// [`crate::topology::generate_random_with_model`]) and by
+/// [`crate::topology::assign_delays_from_model`]. Every variant is resolved
+/// deterministically: the same parameters always produce the same delays.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DelayModel {
     /// All synapses have the same fixed delay.
     Fixed { delay: DelayTicks },
     /// Delay is proportional to Euclidean distance between neurons.
     /// `delay = clamp(round(distance / speed), min_delay, max_delay)`.
+    ///
+    /// Needs neuron positions, so the generators reject it with
+    /// [`crate::error::MeshError::UnsupportedModel`].
     DistanceProportional {
         speed: f32,
         min_delay: DelayTicks,
         max_delay: DelayTicks,
     },
-    /// Delay drawn uniformly from `[min_delay, max_delay]`.
+    /// Delays spread over `[min_delay, max_delay]`.
+    ///
+    /// Despite the name, no RNG is involved: the spread comes from a
+    /// deterministic hash of the source and target indices, so generation
+    /// stays reproducible.
     UniformRandom {
         min_delay: DelayTicks,
         max_delay: DelayTicks,
