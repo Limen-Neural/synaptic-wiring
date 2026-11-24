@@ -2,5 +2,5 @@
 # Dev/CI toolchain pin. Must be >= Cargo.toml `rust-version` (the true
 # MSRV); the two are intentionally allowed to differ — see REVIEW.md
 # "MSRV / toolchain split".
-channel = "1.99.0"
+channel = "1.100.0"
 components = ["clippy", "rustfmt"]

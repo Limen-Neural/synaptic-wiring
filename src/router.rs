@@ -1521,10 +1521,10 @@ impl ChannelRouter {
             (self.neurons[channel_idx].weights[channel_idx] + delta).clamp(0.1, 2.0);
 
         if feedback.reward > 0.0 {
-            for j in 0..n {
+            for (j, neuron) in self.neurons.iter_mut().enumerate().take(n) {
                 if j != channel_idx {
-                    self.neurons[j].weights[channel_idx] =
-                        (self.neurons[j].weights[channel_idx] - delta * 0.3).clamp(-1.0, 1.5);
+                    neuron.weights[channel_idx] =
+                        (neuron.weights[channel_idx] - delta * 0.3).clamp(-1.0, 1.5);
                 }
             }
         }

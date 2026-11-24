@@ -436,7 +436,7 @@ dependencies = [
 
 [[package]]
 name = "synaptic-wiring"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "criterion",
  "libm",

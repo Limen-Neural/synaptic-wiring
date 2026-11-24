@@ -14,13 +14,13 @@ Limen-Neural/neuromod#214):
   --all-features` (currently **1.85**, the edition 2024 floor). It must be
   **≤** the dev toolchain channel. Lower it when code stops needing newer
   std APIs; never raise it just to match the toolchain.
-- **Dev/CI toolchain pin = 1.99.0.** `rust-toolchain.toml` `channel`, every
+- **Dev/CI toolchain pin = 1.100.0.** `rust-toolchain.toml` `channel`, every
   `toolchain:` / `rust-version:` pin in `.github/workflows/ci.yml` (the
   toolchain installs, the packaging job, and the `cargo-deny` action) and
   `.github/workflows/coverage.yml` stay identical to each other (currently
-  **1.99.0**) — but **not** to `rust-version`. `.devin/blueprint.yaml`
+  **1.100.0**) — but **not** to `rust-version`. `.devin/blueprint.yaml`
   carries the same dev pin as a literal (`rustup toolchain install
-  1.99.0`) — it names no `stable` and cannot drift to the image default,
+  1.100.0`) — it names no `stable` and cannot drift to the image default,
   but it must be bumped by hand alongside the other dev pins (its UI copy
   is reference-only and must be re-applied too). The `validate` job in
   `ci.yml` checks the dev pins agree with each other, that they are ≥

@@ -7,9 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-24
+
 ### Migrating from 0.3.x
 
-0.4.0 wraps the router's bare `f32` / `usize` arguments in newtypes to keep
+0.5.0 wraps the router's bare `f32` / `usize` arguments in newtypes to keep
 `router.rs` under CodeScene's primitive-obsession threshold (LIM-1490). The
 migration is mechanical: each affected call site fails to compile until the
 value is wrapped, and the `From` impls added in the same release (LIM-1554)
@@ -29,7 +31,7 @@ use synaptic_wiring::{ChannelIndex, ModulationGain, NeuromodNeuron, SynapticDriv
 // 0.3.x
 neuron.integrate(0.5);
 
-// 0.4.0
+// 0.5.0
 neuron.integrate(SynapticDrive { stimulus: 0.5 });
 // or, via From<f32>:
 neuron.integrate(0.5_f32.into());
@@ -45,7 +47,7 @@ neuron.integrate(0.5_f32.into());
 neuron.set_gain(1.5);
 router.set_global_gain(1.5);
 
-// 0.4.0
+// 0.5.0
 neuron.set_gain(ModulationGain { value: 1.5 });
 router.set_global_gain(ModulationGain { value: 1.5 });
 // or, via From<f32>:
@@ -61,7 +63,7 @@ router.set_global_gain(1.5_f32.into());
 // 0.3.x
 if decision.is_active(3) { /* ... */ }
 
-// 0.4.0
+// 0.5.0
 if decision.is_active(ChannelIndex(3)) { /* ... */ }
 // or, via From<usize>:
 if decision.is_active(3_usize.into()) { /* ... */ }
@@ -92,7 +94,7 @@ let config = TopologyConfig {
     sparsity_threshold: 0.01,
 };
 
-// 0.4.0 — keep the existing fields, add `model`
+// 0.5.0 — keep the existing fields, add `model`
 let config = TopologyConfig {
     neuron_count: 64,
     inhibitory_fraction: 0.2,
@@ -505,7 +507,8 @@ First versioned history. Nothing before this tag was published or tagged.
   derivable impls, redundant borrows).
 - Fixed `cargo fmt` formatting (module ordering, debug_assert wrapping).
 
-[Unreleased]: https://github.com/Limen-Neural/synaptic-wiring/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Limen-Neural/synaptic-wiring/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/Limen-Neural/synaptic-wiring/compare/v0.3.0...v0.5.0
 [0.3.0]: https://github.com/Limen-Neural/synaptic-wiring/compare/v0.1.0...v0.3.0
 [0.2.0]: https://github.com/Limen-Neural/synaptic-wiring/commit/4519a021e791aef44e7f5dcfe9bf7032c2cf6e7e
 [0.1.0]: https://github.com/Limen-Neural/synaptic-wiring/releases/tag/v0.1.0
