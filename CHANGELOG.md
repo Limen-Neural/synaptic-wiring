@@ -205,7 +205,8 @@ wildcard.
   compile error instead of a no-op (the crate previously had no features).
   Add `features = ["alloc"]` to keep building (LIM-1561).
 
-- **MSRV**: `Cargo.toml` `rust-version` lowered from **1.99.0** to the
+- **MSRV**: `Cargo.toml` `rust-version` lowered from **1.98.1** (the 0.3.0
+  requirement; it went to 1.99.0 mid-cycle before the lowering) to the
   measured **1.85** (edition 2024 floor) now that the code no longer needs
   newer std APIs — `std::f64::consts::GOLDEN_RATIO` (1.94) became a local
   const and `usize::is_multiple_of` (1.87) became `k % 2 != 0`. The dev

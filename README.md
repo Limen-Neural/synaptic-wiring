@@ -84,7 +84,8 @@ releases may still contain breaking changes until 1.0. Once it is published,
 pin an exact version (`= "0.5.0"`) if you need stability.
 
 Until `0.5.0` is published to crates.io, depend on git instead — or pin
-`synaptic-wiring = "0.3"` for the last published release.
+`synaptic-wiring = "0.3"` for the last published release (requires Rust
+1.98.1 and has no `alloc` feature; use git for Rust 1.85 or no-std builds).
 
 For git, track `main` or pin a tag:
 
