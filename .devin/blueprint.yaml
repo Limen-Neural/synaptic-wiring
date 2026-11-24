@@ -6,20 +6,14 @@
 # to match this file whenever either side changes.
 
 initialize: |
-  # Read the dev toolchain pin straight out of rust-toolchain.toml so this
-  # can never drift to `stable` or whatever the image default happens to
-  # be; it fails loudly if the file is missing or the pin can't be
-  # parsed. The extraction mirrors the pin check in ci.yml. Repo-level
-  # blueprint steps run in the cloned repository root, so the file is
-  # always present. No `rustup default` needed: rust-toolchain.toml
-  # auto-selects the toolchain for every cargo/rustc invocation inside
-  # the repo.
-  channel=$(grep -m1 '^channel' rust-toolchain.toml | sed -E 's/.*"([^"]+)".*/\1/' | tr -d '\r')
-  if [ -z "$channel" ]; then
-    printf '%s\n' 'Could not read the Rust channel from rust-toolchain.toml' >&2
-    exit 1
-  fi
-  rustup toolchain install "$channel" --component clippy --component rustfmt
+  # Pinned to the dev toolchain in REVIEW.md "MSRV / toolchain split"
+  # (currently 1.99.0). Bump it together with rust-toolchain.toml and the
+  # CI pins, and re-apply the copy in Devin's blueprint UI. The literal
+  # version keeps the install location-independent: no rust-toolchain.toml
+  # lookup and no fallback to the image default. No `rustup default`
+  # needed: rust-toolchain.toml auto-selects the toolchain for every
+  # cargo/rustc invocation inside the repo.
+  rustup toolchain install 1.99.0 --component clippy --component rustfmt
 
 maintenance: |
   cargo fetch --locked

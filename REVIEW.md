@@ -19,10 +19,10 @@ Limen-Neural/neuromod#214):
   toolchain installs, the packaging job, and the `cargo-deny` action) and
   `.github/workflows/coverage.yml` stay identical to each other (currently
   **1.99.0**) — but **not** to `rust-version`. `.devin/blueprint.yaml`
-  names no version literal: its `initialize` reads `channel` out of
-  `rust-toolchain.toml` and installs exactly that, so it follows this pin
-  automatically (and its UI copy must be kept in sync — the file is
-  reference-only). The `validate` job in
+  carries the same dev pin as a literal (`rustup toolchain install
+  1.99.0`) — it names no `stable` and cannot drift to the image default,
+  but it must be bumped by hand alongside the other dev pins (its UI copy
+  is reference-only and must be re-applied too). The `validate` job in
   `ci.yml` checks the dev pins agree with each other, that they are ≥
   `rust-version`, and that the README's MSRV line matches `rust-version`.
 
@@ -40,11 +40,11 @@ To change either pin:
   requires toolchain ≥ rust-version).
 - **Bump the dev toolchain**: set the new version in `rust-toolchain.toml`,
   every `toolchain:`/`rust-version:` pin in `ci.yml` and `coverage.yml`,
-  and run the mandatory commands below on that toolchain
-  (`rustup run <ver> cargo test --locked`, etc.). `.devin/blueprint.yaml`
-  needs no version edit — it follows `rust-toolchain.toml` — but its Devin
-  UI copy must be re-applied if the `initialize` block changed. Do not
-  lower `rust-version` unless the code genuinely requires it.
+  and the literal in `.devin/blueprint.yaml`'s `initialize` (then re-apply
+  the Devin UI blueprint copy — the file is reference-only). Run the
+  mandatory commands below on that toolchain
+  (`rustup run <ver> cargo test --locked`, etc.). Do not lower
+  `rust-version` unless the code genuinely requires it.
 
 ## Build profiles
 
