@@ -214,9 +214,11 @@ wildcard.
   differ, enforced by a rewritten pin rule in REVIEW.md and a dedicated
   `msrv` CI job that builds and tests on `rust-version` (LIM-1573, #106;
   sweep Limen-Neural/neuromod#214).
-- **MSRV**: Rust pin raised from **1.98.1** to **1.99.0** in `Cargo.toml`
-  `rust-version`, `rust-toolchain.toml`, CI (toolchain install, packaging,
-  and `cargo-deny`), coverage workflow, README, and DeepSource (LIM-1516).
+- **Toolchain**: Rust dev/CI pin raised from **1.98.1** to **1.100.0**
+  across `rust-toolchain.toml`, CI (toolchain install, packaging, and
+  `cargo-deny`), coverage workflow, `.devin/blueprint.yaml`, and the
+  REVIEW/CLAUDE pin docs (LIM-1516, LIM-1615). `Cargo.toml`
+  `rust-version` is governed by the MSRV entry above.
 - **Packaging**: `exclude` entries sorted for easier diff review (LIM-1516).
 - **Router**: `NeuromodNeuron::integrate` takes `SynapticDrive`,
   `set_gain` / `ChannelRouter::set_global_gain` take `ModulationGain`, and

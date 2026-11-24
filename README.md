@@ -83,8 +83,10 @@ synaptic-wiring = "0.5"
 releases may still contain breaking changes until 1.0. Pin an exact version
 (`= "0.5.0"`) if you need stability.
 
-For Development / unreleased main — changes that are not in a release yet —
-depend on git instead:
+Until `0.5.0` is published to crates.io, depend on git instead — or pin
+`synaptic-wiring = "0.3"` for the last published release.
+
+For git, track `main` or pin a tag:
 
 ```toml
 synaptic-wiring = { git = "https://github.com/Limen-Neural/synaptic-wiring" }
