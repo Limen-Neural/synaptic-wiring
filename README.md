@@ -76,21 +76,24 @@ crate. See [Crate boundary](#crate-boundary).
 
 ```toml
 [dependencies]
-synaptic-wiring = "0.3"
+synaptic-wiring = "0.5"
 ```
 
-`0.3.0` is **experimental, pre-1.0**: the API is usable and tested, but minor
-releases may still contain breaking changes until 1.0. Pin an exact version
-(`= "0.3.0"`) if you need stability.
+`0.5.0` is **experimental, pre-1.0**: the API is usable and tested, but minor
+releases may still contain breaking changes until 1.0. Once it is published,
+pin an exact version (`= "0.5.0"`) if you need stability.
 
-For Development / unreleased main — changes that are not in a release yet —
-depend on git instead:
+Until `0.5.0` is published to crates.io, depend on git instead — or pin
+`synaptic-wiring = "0.3"` for the last published release (requires Rust
+1.98.1 and has no `alloc` feature; use git for Rust 1.85 or no-std builds).
+
+For git, track `main` or pin a tag:
 
 ```toml
 synaptic-wiring = { git = "https://github.com/Limen-Neural/synaptic-wiring" }
 ```
 
-Add `tag = "v0.3.0"` to pin a git dependency to a specific release instead of tracking `main` — see [releases](https://github.com/Limen-Neural/synaptic-wiring/releases) for the tags that exist today.
+Add `tag = "v0.5.0"` to pin a git dependency to a specific release instead of tracking `main` (the tag is created with the 0.5.0 release) — see [releases](https://github.com/Limen-Neural/synaptic-wiring/releases) for the tags that exist today.
 
 **MSRV:** Rust **1.85**. Runtime dependencies: `serde`, `sha2`.
 
@@ -101,7 +104,7 @@ The crate builds without `std` on targets that have a global allocator. The
 
 ```toml
 [dependencies]
-synaptic-wiring = { version = "0.3", default-features = false, features = ["alloc"] }
+synaptic-wiring = { version = "0.5", default-features = false, features = ["alloc"] }
 ```
 
 - **Requires** a `#[global_allocator]` (graphs, delay rings and router state

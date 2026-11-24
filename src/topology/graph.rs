@@ -439,7 +439,7 @@ impl SynapticGraph {
 
     /// Mean out-degree across all neurons.
     #[deprecated(
-        since = "0.4.0",
+        since = "0.5.0",
         note = "use `SynapticGraph::mean_out_degree`, which returns `f64`"
     )]
     pub fn mean_degree(&self) -> f32 {

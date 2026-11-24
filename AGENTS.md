@@ -48,8 +48,7 @@ This file contains workflow and orientation notes for AI agents working on this 
 - **What it is**: the Linear pipeline access key for this repo's Linear Releases pipeline ([synaptic-mesh Releases](https://linear.app/rpd-34/pipeline/synaptic-mesh/releases)).
 - **How to create it**: open that pipeline's settings page in Linear and copy the access key.
 - **Where to store it**: GitHub `Settings → Secrets and variables → Actions`. Do not commit the key.
-- **Current status**: not set. This repo's Actions secrets still only have leftover Qodana tokens.
-- **After adding it**: dry-run once via Actions → Linear Release → Run workflow (`dry_run` defaults to true).
+- **Current status**: set (created 2026-09-13). Verified working via a `workflow_dispatch` dry run on 2026-11-24 — it scanned the commit range and resolved release `0.5.0` against the synaptic-mesh pipeline without mutating Linear.
 
 ## Repository Context
 

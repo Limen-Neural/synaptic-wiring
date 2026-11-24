@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-The toolchain is pinned by `rust-toolchain.toml` (currently 1.99.0). CI runs these, and `REVIEW.md` lists the local quality gate:
+The toolchain is pinned by `rust-toolchain.toml` (currently 1.100.0). CI runs these, and `REVIEW.md` lists the local quality gate:
 
 ```bash
 cargo fmt --check
@@ -29,7 +29,7 @@ cargo build --locked --no-default-features --features alloc --target thumbv7em-n
 
 ## MSRV / toolchain split
 
-`Cargo.toml` `rust-version` is the **true measured MSRV** (currently 1.85). The README's `MSRV` line must match `rust-version`. `rust-toolchain.toml` and every `toolchain:` / `rust-version:` pin in `ci.yml` and `coverage.yml` are the **dev toolchain** (currently 1.99.0); those must agree with each other and be ≥ `rust-version`. A dedicated `msrv` CI job reads `rust-version` from Cargo.toml at run time. Each pin set must stay internally consistent: the README must match `rust-version`, and the toolchain pins must match each other (see `REVIEW.md`).
+`Cargo.toml` `rust-version` is the **true measured MSRV** (currently 1.85). The README's `MSRV` line must match `rust-version`. `rust-toolchain.toml` and every `toolchain:` / `rust-version:` pin in `ci.yml` and `coverage.yml` are the **dev toolchain** (currently 1.100.0); those must agree with each other and be ≥ `rust-version`. A dedicated `msrv` CI job reads `rust-version` from Cargo.toml at run time. Each pin set must stay internally consistent: the README must match `rust-version`, and the toolchain pins must match each other (see `REVIEW.md`).
 
 ## Architecture
 
@@ -58,7 +58,7 @@ Consequences worth knowing before editing:
 ## Process
 
 - Commit and PR titles carry a Linear identifier (`LIM-1234`) so Linear Release scanning attaches the issue. GitHub is the source of truth for issue state.
-- User-visible changes go under `[Unreleased]` in `CHANGELOG.md`. The crate is pre-1.0, so breaking changes are allowed in minor releases, but document the migration. The unreleased router signature changes already require the next release to be 0.4.0.
+- User-visible changes go under `[Unreleased]` in `CHANGELOG.md`. The crate is pre-1.0, so breaking changes are allowed in minor releases, but document the migration.
 - The published `.crate` holds only source, manifests, licenses, README and CHANGELOG. A new top-level file needs an `exclude` entry in `Cargo.toml` or an addition to the allowlist in `ci.yml`. `docs/` is excluded and currently holds only the README logo.
 - Third-party GitHub Actions are pinned to commit SHAs.
 - Code-quality bots shape file layout: Codacy flags long files and methods (the checkpoint test suite is split into small modules for that reason), so prefer splitting over growing a file.

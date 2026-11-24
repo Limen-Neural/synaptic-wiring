@@ -7,9 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-24
+
 ### Migrating from 0.3.x
 
-0.4.0 wraps the router's bare `f32` / `usize` arguments in newtypes to keep
+0.5.0 wraps the router's bare `f32` / `usize` arguments in newtypes to keep
 `router.rs` under CodeScene's primitive-obsession threshold (LIM-1490). The
 migration is mechanical: each affected call site fails to compile until the
 value is wrapped, and the `From` impls added in the same release (LIM-1554)
@@ -29,7 +31,7 @@ use synaptic_wiring::{ChannelIndex, ModulationGain, NeuromodNeuron, SynapticDriv
 // 0.3.x
 neuron.integrate(0.5);
 
-// 0.4.0
+// 0.5.0
 neuron.integrate(SynapticDrive { stimulus: 0.5 });
 // or, via From<f32>:
 neuron.integrate(0.5_f32.into());
@@ -45,7 +47,7 @@ neuron.integrate(0.5_f32.into());
 neuron.set_gain(1.5);
 router.set_global_gain(1.5);
 
-// 0.4.0
+// 0.5.0
 neuron.set_gain(ModulationGain { value: 1.5 });
 router.set_global_gain(ModulationGain { value: 1.5 });
 // or, via From<f32>:
@@ -61,7 +63,7 @@ router.set_global_gain(1.5_f32.into());
 // 0.3.x
 if decision.is_active(3) { /* ... */ }
 
-// 0.4.0
+// 0.5.0
 if decision.is_active(ChannelIndex(3)) { /* ... */ }
 // or, via From<usize>:
 if decision.is_active(3_usize.into()) { /* ... */ }
@@ -92,7 +94,7 @@ let config = TopologyConfig {
     sparsity_threshold: 0.01,
 };
 
-// 0.4.0 — keep the existing fields, add `model`
+// 0.5.0 — keep the existing fields, add `model`
 let config = TopologyConfig {
     neuron_count: 64,
     inhibitory_fraction: 0.2,
@@ -203,18 +205,22 @@ wildcard.
   compile error instead of a no-op (the crate previously had no features).
   Add `features = ["alloc"]` to keep building (LIM-1561).
 
-- **MSRV**: `Cargo.toml` `rust-version` lowered from **1.99.0** to the
+- **MSRV**: `Cargo.toml` `rust-version` lowered from **1.98.1** (the 0.3.0
+  requirement; it went to 1.99.0 mid-cycle before the lowering) to the
   measured **1.85** (edition 2024 floor) now that the code no longer needs
   newer std APIs — `std::f64::consts::GOLDEN_RATIO` (1.94) became a local
   const and `usize::is_multiple_of` (1.87) became `k % 2 != 0`. The dev
-  toolchain stays pinned at **1.99.0** (`rust-toolchain.toml`, CI,
+  toolchain stays pinned at **1.100.0** (`rust-toolchain.toml`, CI,
   coverage); `rust-version` and the toolchain pin are now allowed to
   differ, enforced by a rewritten pin rule in REVIEW.md and a dedicated
   `msrv` CI job that builds and tests on `rust-version` (LIM-1573, #106;
   sweep Limen-Neural/neuromod#214).
-- **MSRV**: Rust pin raised from **1.98.1** to **1.99.0** in `Cargo.toml`
-  `rust-version`, `rust-toolchain.toml`, CI (toolchain install, packaging,
-  and `cargo-deny`), coverage workflow, README, and DeepSource (LIM-1516).
+- **Toolchain**: Rust dev/CI pin raised from **1.98.1** to **1.99.0**
+  mid-cycle, then to **1.100.0** for this release, across
+  `rust-toolchain.toml`, CI (toolchain install, packaging, and
+  `cargo-deny`), coverage workflow, `.devin/blueprint.yaml`, and the
+  REVIEW/CLAUDE pin docs (LIM-1516, LIM-1615). `Cargo.toml`
+  `rust-version` is governed by the MSRV entry above.
 - **Packaging**: `exclude` entries sorted for easier diff review (LIM-1516).
 - **Router**: `NeuromodNeuron::integrate` takes `SynapticDrive`,
   `set_gain` / `ChannelRouter::set_global_gain` take `ModulationGain`, and
@@ -505,7 +511,8 @@ First versioned history. Nothing before this tag was published or tagged.
   derivable impls, redundant borrows).
 - Fixed `cargo fmt` formatting (module ordering, debug_assert wrapping).
 
-[Unreleased]: https://github.com/Limen-Neural/synaptic-wiring/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Limen-Neural/synaptic-wiring/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/Limen-Neural/synaptic-wiring/compare/v0.3.0...v0.5.0
 [0.3.0]: https://github.com/Limen-Neural/synaptic-wiring/compare/v0.1.0...v0.3.0
 [0.2.0]: https://github.com/Limen-Neural/synaptic-wiring/commit/4519a021e791aef44e7f5dcfe9bf7032c2cf6e7e
 [0.1.0]: https://github.com/Limen-Neural/synaptic-wiring/releases/tag/v0.1.0
